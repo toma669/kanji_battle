@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>文字スピナー - VS COM</title>
+<style>
+:root{--ink:#202638;--muted:#687187;--blue:#2878e8;--red:#e34c62;--panel:#fff;--line:#dce2ec}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#edf1f7,#dfe5ef);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);min-height:100vh}
+main{max-width:980px;margin:auto;padding:18px 16px 28px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+h1{font-size:clamp(23px,4vw,34px);margin:0;letter-spacing:.04em} .sub{font-size:12px;color:var(--muted)}
+.pill{background:#fff;border:1px solid var(--line);padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:14px;align-items:start}
+.gamecard,.panel{background:var(--panel);border:1px solid #d9dfeb;border-radius:18px;box-shadow:0 8px 24px #34415b12}
+.gamecard{padding:12px;overflow:hidden}.hud{display:flex;justify-content:space-between;align-items:center;padding:2px 8px 10px;font-weight:800}
+.player{display:flex;align-items:center;gap:7px}.dot{width:10px;height:10px;border-radius:50%;display:inline-block}.blue{background:var(--blue)}.red{background:var(--red)}
+#timer{font-variant-numeric:tabular-nums;color:#5b6477;font-size:14px}
+canvas{display:block;width:100%;aspect-ratio:1.28/1;border-radius:14px;background:#e9edf3;touch-action:none;cursor:crosshair}
+.help{font-size:12px;color:var(--muted);padding:10px 6px 2px;line-height:1.6}
+.meterWrap{display:grid;grid-template-columns:70px 1fr minmax(125px,auto);gap:8px;align-items:center;padding:7px 8px 2px;font-size:11px;font-weight:800;color:#586176}.meter{height:10px;background:#e8edf5;border-radius:99px;overflow:hidden}.meter i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#35b779,#e6bd42);border-radius:99px;transition:width .12s}.meterValue{text-align:right;font-variant-numeric:tabular-nums}
+.panel{padding:15px;display:flex;flex-direction:column;gap:13px}
+h2{font-size:16px;margin:0 0 2px}.field{display:flex;flex-direction:column;gap:6px}
+label{font-size:12px;font-weight:800;color:#586176}
+input,select,button{font:inherit}input,select{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fbfcfe;color:var(--ink)}
+.fonts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.fonts button,.secondary{background:#f1f4f9;color:#354056;border:1px solid var(--line)}
+button{border:0;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer;transition:.12s}
+button:active{transform:translateY(2px)}button:disabled{opacity:.5;cursor:not-allowed}
+.fonts button.active{background:#e5efff;border-color:#8ab5fa;color:#1458b6}
+.primary{background:linear-gradient(180deg,#3989f5,#246bd0);color:white;box-shadow:0 3px 0 #174d9d}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.skills{display:grid;grid-template-columns:1fr 1fr;gap:8px}.skill{background:#252d42;color:#fff;border:1px solid #111a30}.skill:disabled{opacity:.45}.skill small{display:block;font-size:10px;font-weight:600;opacity:.8;margin-top:2px}
+#start{width:100%;font-size:15px;padding:13px}
+#status{min-height:40px;background:#f6f8fb;border:1px solid #e7ebf2;border-radius:10px;padding:9px;font-size:12px;line-height:1.5;color:#586176}
+.stats{font-size:11px;color:#7a8395;line-height:1.6}
+.charStats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.statCard{border:1px solid var(--line);border-radius:11px;padding:9px;background:#fbfcff}.statTitle{font-size:12px;font-weight:900;margin-bottom:5px}.statChar{font-size:24px;font-weight:900;display:inline-block;min-width:30px}.statLine{display:grid;grid-template-columns:42px 1fr 25px;gap:5px;align-items:center;font-size:10px;margin:4px 0}.bar{height:7px;border-radius:99px;background:#e8edf5;overflow:hidden}.bar i{height:100%;display:block;background:linear-gradient(90deg,#4b91ef,#245fc2);border-radius:99px}.randomNote{font-size:10px;color:var(--muted)}
+.result{font-size:22px;font-weight:900;text-align:center;color:#e34c62;min-height:28px}
+@media(max-width:760px){main{padding:12px}.layout{grid-template-columns:1fr}.panel{display:grid;grid-template-columns:1fr 1fr}.panel h2,.panel #status,.panel .result,.panel .stats,.panel .charStats,.panel .field:has(.charStats){grid-column:1/-1}.gamecard{padding:8px}}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>文字スピナー</h1><div class="sub">MOJI SPINNER · VS COM</div></div><div class="pill">BROWSER EDITION</div></header>
+<div class="layout">
+<section class="gamecard">
+ <div class="hud"><div class="player"><i class="dot blue"></i><span id="pLabel">1P　文</span></div><div id="timer">READY</div><div class="player"><span id="cLabel">COM　字</span><i class="dot red"></i></div></div>
+ <canvas id="arena" width="900" height="700" aria-label="文字コマの対戦アリーナ"></canvas>
+ <div class="meterWrap"><span>必殺エネルギー</span><span class="meter"><i id="staminaBar"></i></span><span class="meterValue" id="staminaText">100 / 100</span></div>
+ <div class="help">外周が高く、中央の穴へ向かって下るすり鉢状のステージです。コマを押して後ろへ引き、離すと発射！（1試合1回）中央の穴に落ちるとリングアウト。</div>
+</section>
+<aside class="panel">
+ <h2>バトル設定</h2>
+ <div class="field"><label for="myChar">あなたの文字</label><input id="myChar" maxlength="2" value="文"></div>
+ <div class="field"><label for="enemyChar">COMの文字</label><select id="enemyChar">
+  <option value="random" selected>ランダム</option>
+  <option>字</option><option>力</option><option>速</option><option>龍</option><option>炎</option><option>雷</option><option>剣</option><option>風</option><option>盾</option><option>鬼</option><option>王</option><option>星</option><option>刃</option><option>影</option><option>神</option><option>猫</option><option>虎</option><option>武</option><option>爆</option><option>翔</option>
+ </select><div class="randomNote">「ランダム」のままなら、バトル開始時にCOMの文字が決まります。</div></div>
+ <div class="field" style="grid-column:1/-1"><label>文字の形から算出したステータス（バトル前）</label>
+  <div class="charStats">
+   <div class="statCard"><div class="statTitle">あなた <span class="statChar" id="myPreview">文</span></div><div id="myStats"></div></div>
+   <div class="statCard"><div class="statTitle">COM <span class="statChar" id="enemyPreview">?</span></div><div id="enemyStats"></div></div>
+  </div>
+ </div>
+ <div class="field"><label>書体</label><div class="fonts" id="fonts">
+  <button class="active" data-font="sans-serif">ゴシック</button><button data-font="serif">明朝体</button><button data-font="system-ui">ポップ</button><button data-font="cursive">行書風</button>
+ </div></div>
+ <div class="field"><label for="difficulty">COMの強さ</label><select id="difficulty"><option value="0.68">弱</option><option value="0.88" selected>普</option><option value="1.08">強</option></select></div>
+ <div class="field"><label for="stage">ステージ</label><select id="stage"><option value="classic">スタンダード</option><option value="bumper">バンパー</option><option value="small">コンパクトリング</option></select></div>
+ <button class="primary" id="start">バトル開始</button>
+ <div class="actions"><button class="secondary" id="reset">リセット</button><button class="secondary" id="pause">一時停止</button></div>
+ <div class="skills"><button class="skill" id="special">必殺技！<small id="specialCd">バトル中に使用</small></button></div>
+ <div class="result" id="result"></div>
+ <div id="status">コマを設定して「バトル開始」を押そう！</div>
+ <div class="stats">ヒント：文字の面積が大きいほどパワー型、小さいほどスピード型。文字の形によって動き方も少し変わります。</div>
+</aside>
+</div>
+</main>
+<script>
+(()=>{
+const canvas=document.getElementById('arena'),ctx=canvas.getContext('2d');
+const W=900,H=700,cx=450,cy=355;
+const $=id=>document.getElementById(id);
+let font='sans-serif',running=false,paused=false,ended=false,elapsed=0,last=0,drag=null,raf=0,stage='classic',pieces=[];
+let ringR=260,skillTimers={special:0,aiSpecial:5},effects=[];
+const LAUNCH_COOLDOWN=4,MAX_STAMINA=100,STAMINA_REGEN=9;
+let aiLaunchDelay=0.75;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const randomChars=['字','力','速','龍','炎','雷','剣','風','盾','鬼','王','星','刃','影','神','猫','虎','武','爆','翔'];
+function randomChar(){return randomChars[Math.floor(Math.random()*randomChars.length)]}
+// Canvas上に文字を描き、実際の画素の密度・縦横比から能力値を算出
+function shapeStats(ch){
+ const c=document.createElement('canvas'),g=c.getContext('2d',{willReadFrequently:true});
+ c.width=150;c.height=150;g.font=`900 112px ${font}`;g.textAlign='center';g.textBaseline='middle';
+ g.fillStyle='#000';g.fillText(ch||'文',75,75);
+ const data=g.getImageData(0,0,150,150).data;let minX=150,minY=150,maxX=0,maxY=0,ink=0;
+ for(let y=0;y<150;y++)for(let x=0;x<150;x++){if(data[(y*150+x)*4+3]>50){ink++;minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}}
+ const width=Math.max(1,maxX-minX+1),height=Math.max(1,maxY-minY+1),density=ink/(width*height),aspect=width/height;
+ const power=clamp(Math.round(38+density*43+(aspect>.78?8:0)),25,95);
+ const speed=clamp(Math.round(92-density*42-Math.abs(aspect-.72)*25),25,95);
+ const balance=clamp(Math.round(95-Math.abs(power-speed)*.72-Math.abs(aspect-.72)*12),25,95);
+ return {power,speed,balance};
+}
+function statMarkup(st){
+ return [['パワー',st.power],['スピード',st.speed],['バランス',st.balance]].map(([n,v])=>`<div class="statLine"><span>${n}</span><span class="bar"><i style="width:${v}%"></i></span><b>${v}</b></div>`).join('');
+}
+function refreshPreviews(){
+ const mine=($('myChar').value.trim()||'文').slice(0,2),sel=$('enemyChar').value,enemy=sel==='random'?'龍':sel;
+ $('myPreview').textContent=mine;$('myStats').innerHTML=statMarkup(shapeStats(mine));
+ $('enemyPreview').textContent=sel==='random'?'？':enemy;
+ $('enemyStats').innerHTML=statMarkup(shapeStats(enemy));
+}
+function makePiece(ch,x,y,color,isAI){
+ const stats=shapeStats(ch),mask=document.createElement('canvas'),mg=mask.getContext('2d',{willReadFrequently:true});
+ mask.width=180;mask.height=180;mg.font=`900 ${Array.from(ch).length>1?62:86}px ${font}`;mg.textAlign='center';mg.textBaseline='middle';mg.fillStyle='#fff';mg.fillText(ch,90,90);
+ const pixels=mg.getImageData(0,0,180,180).data;let minX=180,minY=180,maxX=0,maxY=0;
+ for(let yy=0;yy<180;yy++)for(let xx=0;xx<180;xx++)if(pixels[(yy*180+xx)*4+3]>30){minX=Math.min(minX,xx);maxX=Math.max(maxX,xx);minY=Math.min(minY,yy);maxY=Math.max(maxY,yy)}
+ return {ch,x,y,vx:0,vy:0,angle:Math.random()*6.28,spin:(isAI?-1:1)*(5+Math.random()*2),color,isAI,r:Math.max(maxX-minX,maxY-minY)*.5,stats,pixels,
+  mass:clamp(.75+stats.power/150,.8,1.45),alive:true,tilt:0,wobble:0,hit:0,hitCooldown:0,stamina:MAX_STAMINA,launchUsed:false};
+}
+// 文字の見た目とは別に、扱いやすい正方形の当たり判定を使う。
+// 回転中・ドラッグ中も文字の中心を基準にし、引っ張る線は当たり判定にしない。
+function hitHalf(p){return Math.max(36,Math.min(58,p.r*.82));}
+function glyphContains(p,wx,wy){
+ const h=hitHalf(p);
+ return Math.abs(wx-p.x)<=h && Math.abs(wy-p.y)<=h;
+}
+function glyphsTouch(a,b){
+ const ah=hitHalf(a),bh=hitHalf(b);
+ return Math.abs(a.x-b.x)<=ah+bh && Math.abs(a.y-b.y)<=ah+bh;
+}
+function setup(){
+ effects=[];
+ stage=$('stage').value;ringR=stage==='small'?220:260;
+ const a=($('myChar').value.trim()||'文').slice(0,2),b=$('enemyChar').value==='random'?randomChar():$('enemyChar').value;
+ pieces=[makePiece(a,cx-100,cy,'#2878e8',false),makePiece(b,cx+100,cy,'#923de0',true)];
+ pieces[0].spin=10;pieces[1].spin=-10;
+ $('pLabel').textContent='1P　'+a;$('cLabel').textContent='COM　'+b;$('enemyPreview').textContent=b;$('enemyStats').innerHTML=statMarkup(shapeStats(b));
+ $('timer').textContent='READY';$('result').textContent='';$('status').textContent='コマを後ろへ引っ張って発射！';
+ elapsed=0;running=false;paused=false;ended=false;drag=null;effects=[];skillTimers={special:0,aiSpecial:5};aiLaunchDelay=.75;$('special').disabled=true;$('specialCd').textContent='バトル中に使用';
+ $('pause').textContent='一時停止';$('staminaBar').style.width='100%';$('staminaText').textContent='100 / 100';draw();
+}
+function roundedRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ // tiled floor
+ ctx.fillStyle='#e9edf3';ctx.fillRect(0,0,W,H);
+ ctx.strokeStyle='#dce2eb';ctx.lineWidth=1;
+ for(let x=0;x<W;x+=28){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+ for(let y=0;y<H;y+=28){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+ // arena: 外周が高く、中央の穴へ向かってゆるやかに下るすり鉢状の坂
+ ctx.save();ctx.translate(cx,cy+20);ctx.scale(1,.78);
+ ctx.fillStyle='#aeb8c8';ctx.beginPath();ctx.arc(0,0,ringR+12,0,Math.PI*2);ctx.fill();ctx.restore();
+ ctx.save();ctx.translate(cx,cy);ctx.scale(1,.78);
+ const bowl=ctx.createRadialGradient(-55,-75,8,0,0,ringR+12);
+ bowl.addColorStop(0,'#7d8798');       // 中央のくぼみ付近
+ bowl.addColorStop(.075,'#aeb7c5');
+ bowl.addColorStop(.22,'#cbd2dd');
+ bowl.addColorStop(.52,'#e5e9ef');
+ bowl.addColorStop(.82,'#f7f8fa');     // 外側は高い斜面
+ bowl.addColorStop(1,'#c4ccd8');
+ ctx.fillStyle=bowl;ctx.beginPath();ctx.arc(0,0,ringR,0,Math.PI*2);ctx.fill();
+ // 坂の高低差を見せる等高線
+ [48,82,125,172,218].forEach((r,i)=>{
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle=i<2?'#77839555':'#ffffff88';ctx.lineWidth=i===0?3:2;ctx.stroke();
+ });
+ // 外周の立ち上がり
+ ctx.strokeStyle='#8994a5';ctx.lineWidth=11;ctx.beginPath();ctx.arc(0,0,ringR-2,0,Math.PI*2);ctx.stroke();
+ ctx.strokeStyle='#ffffffaa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,ringR-10,0,Math.PI*2);ctx.stroke();
+ if(stage==='bumper'){[0,Math.PI/2,Math.PI,Math.PI*1.5].forEach(a=>{ctx.fillStyle='#e9a53b';ctx.beginPath();ctx.arc(Math.cos(a)*155,Math.sin(a)*155,19,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#bd7d22';ctx.lineWidth=4;ctx.stroke()})}
+ // 中央の落とし穴
+ const hole=ctx.createRadialGradient(-5,-7,2,0,0,31);
+ hole.addColorStop(0,'#090d18');hole.addColorStop(.62,'#202838');hole.addColorStop(.82,'#566174');hole.addColorStop(1,'#aab3c1');
+ ctx.fillStyle=hole;ctx.beginPath();ctx.arc(0,0,31,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#687487';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,31,0,Math.PI*2);ctx.stroke();
+ ctx.restore();
+ // pieces
+ for(const p of pieces) if(p.alive) drawPiece(p);
+ drawEffects();
+ if(drag){const p=pieces[drag.index];ctx.save();ctx.strokeStyle='#2878e8';ctx.lineWidth=4;ctx.setLineDash([10,8]);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(drag.x,drag.y);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#2878e8';ctx.beginPath();ctx.arc(drag.x,drag.y,7,0,7);ctx.fill();ctx.restore()}
+ if(!running&&!ended){ctx.fillStyle='#687187';ctx.font='700 19px system-ui';ctx.textAlign='center';ctx.fillText('「バトル開始」で対戦スタート',cx,cy+ringR*.78+48)}
+ if(paused){ctx.fillStyle='#202638bb';ctx.fillRect(0,0,W,H);ctx.fillStyle='white';ctx.font='900 42px system-ui';ctx.textAlign='center';ctx.fillText('PAUSE',cx,cy)}
+}
+function spawnHitEffect(x,y,critical,nx,ny,impact){
+ const count=critical?22:11, color=critical?'#ffb52e':'#77c9ff';
+ effects.push({kind:'burst',x,y,age:0,duration:critical?.72:.42,critical,color,nx,ny,impact});
+ for(let i=0;i<count;i++){
+  const a=Math.PI*2*i/count+(Math.random()-.5)*.35;
+  const speed=(critical?125:78)+Math.random()*(critical?150:85)+Math.min(impact,120)*.25;
+  effects.push({kind:'particle',x,y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,age:0,
+   duration:.28+Math.random()*.28,color:critical?(Math.random()<.5?'#ffdf70':'#ff7a35'):(Math.random()<.5?'#ffffff':color),
+   size:critical?3+Math.random()*4:2+Math.random()*3});
+ }
+}
+function drawEffects(){
+ for(const e of effects){
+  const t=clamp(e.age/e.duration,0,1),fade=1-t;
+  if(e.kind==='burst'){
+   ctx.save();ctx.globalAlpha=fade;
+   ctx.strokeStyle=e.color;ctx.lineWidth=e.critical?7:4;
+   ctx.beginPath();ctx.arc(e.x,e.y,(e.critical?12:8)+(e.critical?72:42)*t,0,Math.PI*2);ctx.stroke();
+   if(e.critical){
+    ctx.translate(e.x,e.y);ctx.rotate(t*1.8);ctx.fillStyle='#fff0b8';ctx.font='900 29px system-ui';ctx.textAlign='center';
+    ctx.fillText('CRITICAL!',0,-34-18*t);
+    ctx.strokeStyle='#ff7a35';ctx.lineWidth=3;ctx.beginPath();
+    for(let i=0;i<8;i++){const a=i*Math.PI/4,r=i%2?23:43;const xx=Math.cos(a)*r,yy=Math.sin(a)*r;if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy)}ctx.closePath();ctx.stroke();
+   }else{
+    ctx.fillStyle='#ffffff';ctx.font='800 17px system-ui';ctx.textAlign='center';ctx.fillText('HIT!',e.x,e.y-28-12*t);
+   }
+   ctx.restore();
+  }else{
+   ctx.save();ctx.globalAlpha=fade;ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(e.x,e.y,e.size*fade,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+ }
+}
+function drawPiece(p){
+ ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
+ // 文字そのものの輪郭を立体的なコマにする
+ const multi=Array.from(p.ch).length>1,fs=multi?62:86;
+ ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`900 ${fs}px ${font}`;
+ ctx.lineJoin='round';ctx.lineCap='round';
+ // 文字本体の輪郭だけを表示。影・下側の厚みは描画せず、透明部分に当たり判定を持たせない
+ ctx.strokeStyle='#ffffff';ctx.lineWidth=10;ctx.strokeText(p.ch,0,0);
+ ctx.fillStyle=p.color;ctx.fillText(p.ch,0,0);
+ ctx.restore();
+}
+function launch(p,dx,dy){
+ const raw=clamp(Math.hypot(dx,dy),0,260);
+ if(raw<10||p.launchUsed)return false;
+ // スリングショット発射は1試合につき各コマ1回だけ。引いた距離を強い初速に変換する。
+ const power=Math.min(raw,240);
+ // 発射力を前版の約2.5倍に強化。最大まで引くと大きく飛び出す。
+ const magnitude=power*.42;
+ const d=Math.hypot(dx,dy)||1;
+ p.vx=(dx/d)*magnitude;p.vy=(dy/d)*magnitude;
+ p.spin+=(p.isAI?-1:1)*(power*.12+18);
+ p.launchUsed=true;p.wobble=.02;
+ if(!p.isAI)updateStaminaHud();
+ return true;
+}
+function updateStaminaHud(){
+ const p=pieces[0];if(!p)return;
+ $('staminaBar').style.width=p.stamina+'%';$('staminaText').textContent=Math.round(p.stamina)+' / 100 ・'+(p.launchUsed?'発射済み':'発射1回OK');
+}
+function finish(winner,reason){
+ running=false;ended=true;$('special').disabled=true;
+ $('result').textContent=winner===0?'YOU WIN!':winner===1?'COM WIN':'DRAW';
+ $('status').textContent=reason;
+ draw();
+}
+function update(dt){
+ if(!running||paused)return;
+ elapsed+=dt;
+ // エフェクトは上限を設け、寿命切れを確実に破棄して負荷の蓄積を防ぐ
+ for(const e of effects){e.age+=dt;if(e.kind==='particle'){e.x+=e.vx*dt;e.y+=e.vy*dt;e.vx*=Math.pow(.90,dt*60);e.vy*=Math.pow(.90,dt*60);}}
+ effects=effects.filter(e=>e.age<e.duration);
+ $('timer').textContent=(Math.max(0,60-elapsed)).toFixed(1)+'s';
+ for(const p of pieces){if(p.alive)p.stamina=Math.min(MAX_STAMINA,p.stamina+STAMINA_REGEN*dt);}
+ updateStaminaHud();
+ skillTimers.special=Math.max(0,skillTimers.special-dt);
+ skillTimers.aiSpecial-=dt;
+ $('special').disabled=skillTimers.special>0||pieces[0].stamina<30;
+ $('specialCd').textContent=skillTimers.special>0?skillTimers.special.toFixed(1)+'秒':'発動可能';
+ const ai=pieces[1],player=pieces[0];
+ if(ai.alive&&player.alive&&!ai.launchUsed){aiLaunchDelay-=dt;if(aiLaunchDelay<=0){const tx=player.x-ai.x,ty=player.y-ai.y,d=Math.hypot(tx,ty)||1;const aimJitter=(Math.random()-.5)*.22;const ang=Math.atan2(ty,tx)+aimJitter;const power=Number($('difficulty').value)*(200+Math.random()*40);launch(ai,Math.cos(ang)*power,Math.sin(ang)*power);}}
+ if(ai.alive&&player.alive&&skillTimers.aiSpecial<=0&&Math.hypot(ai.x-player.x,ai.y-player.y)<210){specialAttack(ai,player);skillTimers.aiSpecial=11+Math.random()*4;}
+ for(const p of pieces){
+  if(!p.alive)continue;
+  p.hitCooldown=Math.max(0,p.hitCooldown-dt);
+  p.x+=p.vx*dt;p.y+=p.vy*dt;
+  p.vx*=Math.pow(.988,dt*60);p.vy*=Math.pow(.988,dt*60);
+  // すり鉢の坂による重力：どの位置にいても少しずつ中央の穴へ転がる
+  const slopeX=p.x-cx,slopeY=(p.y-cy)/.78,slopeD=Math.hypot(slopeX,slopeY)||1;
+  const slopeStrength=17; // 緩やかな坂。勢いのあるコマを急に曲げすぎない
+  p.vx+=(-slopeX/slopeD)*slopeStrength*dt;
+  p.vy+=(-slopeY/slopeD)*slopeStrength*.78*dt;
+  p.spin*=Math.pow(.997,dt*60);p.angle+=p.spin*dt;
+  // 中央の穴に落ちたコマはリングアウト扱い
+  if(slopeD<27){p.alive=false;continue;}
+  p.wobble=Math.max(0,p.wobble-dt*.25);
+  // 外周は弱い衝突なら内側へ跳ね返す。強い勢いで深く越えた場合のみリングアウト。
+  const rx=p.x-cx,ry=(p.y-cy)/.78,rd=Math.hypot(rx,ry)||1,limit=ringR-24;
+  if(rd>limit){
+   const nx=rx/rd,ny=(ry/rd)/.78,nn=Math.hypot(nx,ny)||1,ux=nx/nn,uy=ny/nn;
+   const radial=p.vx*ux+p.vy*uy;
+   if(rd>ringR+10&&radial>55){p.alive=false;}
+   else{p.x=cx+ux*limit;p.y=cy+uy*limit*.78;if(radial>0){p.vx-=ux*radial*2.05;p.vy-=uy*radial*2.05;p.vx*=.94;p.vy*=.94;p.spin*=.985;}}
+  }
+ }
+ const [a,b]=pieces;
+ if(a.alive&&b.alive&&glyphsTouch(a,b)){
+  let dx=b.x-a.x,dy=b.y-a.y;
+  // AABB同士の重なりを最小の軸で解消する
+  const overlapX=hitHalf(a)+hitHalf(b)-Math.abs(dx);
+  const overlapY=hitHalf(a)+hitHalf(b)-Math.abs(dy);
+  if(overlapX>0&&overlapY>0){
+   let nx=0,ny=0,over;
+   if(overlapX<overlapY){nx=dx>=0?1:-1;over=overlapX;a.x-=nx*over*.5;b.x+=nx*over*.5;}
+   else{ny=dy>=0?1:-1;over=overlapY;a.y-=ny*over*.5;b.y+=ny*over*.5;}
+   const rel=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;
+   if(rel<0){
+    const impulse=-(2.15)*rel/(1/a.mass+1/b.mass);
+    a.vx-=impulse*nx/a.mass;a.vy-=impulse*ny/a.mass;
+    b.vx+=impulse*nx/b.mass;b.vy+=impulse*ny/b.mass;
+    a.spin+=impulse*.032;b.spin-=impulse*.032;a.wobble=.3;b.wobble=.3;
+    // 1回の接触につき1回だけエフェクト。連続フレームで大量生成しない
+    if(a.hitCooldown<=0&&b.hitCooldown<=0){
+     const critical=impulse>42||Math.random()<.16;
+     spawnHitEffect((a.x+b.x)/2,(a.y+b.y)/2,critical,nx,ny,impulse);
+     if(effects.length>90)effects=effects.slice(-90);
+     $('status').textContent=critical?'クリティカルヒット！':'通常ヒット！';
+     a.hitCooldown=.28;b.hitCooldown=.28;
+    }
+   }
+  }
+ }
+ if(!pieces[0].alive&&!pieces[1].alive)finish(2,'両方のコマがリングアウト！');
+ else if(!pieces[0].alive)finish(1,'あなたのコマがリングアウト！');
+ else if(!pieces[1].alive)finish(0,'COMのコマがリングアウト！');
+ else if(Math.abs(a.spin)<.48&&Math.hypot(a.vx,a.vy)<1.2)finish(1,'あなたのコマの回転が止まりました');
+ else if(Math.abs(b.spin)<.48&&Math.hypot(b.vx,b.vy)<1.2)finish(0,'COMのコマの回転が止まりました');
+ else if(elapsed>60)finish(Math.abs(a.spin)>Math.abs(b.spin)?0:Math.abs(b.spin)>Math.abs(a.spin)?1:2,'制限時間終了！回転力で判定');
+}
+function frame(t){const dt=Math.min(.035,(t-last)/1000||0);last=t;update(dt);draw();if(running)raf=requestAnimationFrame(frame)}
+function specialAttack(attacker,target){
+ if(attacker.stamina<30)return false;attacker.stamina-=30;
+ const dx=target.x-attacker.x,dy=target.y-attacker.y,d=Math.hypot(dx,dy)||1;
+ const nx=dx/d,ny=dy/d;
+ attacker.spin+=(attacker.isAI?-1:1)*13;
+ if(d<260){target.vx+=nx*24;target.vy+=ny*24;target.spin*=.72;target.wobble=1;}
+ attacker.wobble=1;if(!attacker.isAI)updateStaminaHud();return true;
+}
+function start(){cancelAnimationFrame(raf);setup();running=true;$('special').disabled=false;updateStaminaHud();last=performance.now();raf=requestAnimationFrame(frame);$('status').textContent='あなたのコマを後ろへ引いて発射！ 発射は1試合に1回だけです。';}
+function pos(e){const r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+canvas.addEventListener('pointerdown',e=>{if(!running||paused||ended||pieces[0].launchUsed)return;const q=pos(e);let idx=pieces.findIndex(p=>!p.isAI&&p.alive&&glyphContains(p,q.x,q.y));if(idx<0)return;drag={index:idx,x:q.x,y:q.y};canvas.setPointerCapture(e.pointerId);draw()});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;const q=pos(e);drag.x=q.x;drag.y=q.y;draw()});
+canvas.addEventListener('pointerup',e=>{if(!drag)return;const q=pos(e),p=pieces[drag.index];launch(p,p.x-q.x,p.y-q.y);drag=null;draw()});
+canvas.addEventListener('pointercancel',()=>{drag=null;draw()});
+$('fonts').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;font=b.dataset.font;document.querySelectorAll('.fonts button').forEach(x=>x.classList.toggle('active',x===b));draw()});
+$('start').onclick=start;
+$('special').onclick=()=>{if(!running||paused||skillTimers.special>0||pieces[0].stamina<30)return;if(specialAttack(pieces[0],pieces[1]))skillTimers.special=9;draw();};
+$('reset').onclick=()=>{cancelAnimationFrame(raf);setup()};
+$('pause').onclick=()=>{if(!running&&!paused)return;paused=!paused;$('pause').textContent=paused?'再開':'一時停止';if(!paused){last=performance.now();raf=requestAnimationFrame(frame)}draw()};
+$('myChar').addEventListener('input',refreshPreviews);
+$('enemyChar').addEventListener('change',refreshPreviews);
+$('fonts').addEventListener('click',()=>setTimeout(refreshPreviews,0));
+refreshPreviews();setup();
+})();
+</script>
+</body></html>
