@@ -1,0 +1,2786 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ぷよテト2S風 スワップパズル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;900&display=swap');
+
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+            touch-action: manipulation;
+        }
+
+        /* ゲームボードのコンテナ */
+        .board-wrapper {
+            position: relative;
+            border-radius: 16px;
+            padding: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.2);
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+        }
+
+        .board-active {
+            border: 4px solid #00f2fe;
+            box-shadow: 0 0 25px rgba(0, 242, 254, 0.6);
+            transform: scale(1.02);
+            z-index: 10;
+        }
+
+        .board-inactive {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            opacity: 0.65;
+            transform: scale(0.92);
+            filter: grayscale(30%);
+        }
+
+        canvas {
+            display: block;
+            background-color: rgba(15, 23, 42, 0.9);
+            border-radius: 10px;
+        }
+
+        /* コントロールボタンのスタイル */
+        .game-btn {
+            background: linear-gradient(180deg, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            border-radius: 14px;
+            box-shadow: 0 4px 0 #0082c8, 0 6px 12px rgba(0,0,0,0.4);
+            color: #0f172a;
+            font-weight: 900;
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .game-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0px 0 #0082c8, 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .btn-rotate {
+            background: linear-gradient(180deg, #ff758c 0%, #ff7eb3 100%);
+            box-shadow: 0 4px 0 #c93b5b, 0 6px 12px rgba(0,0,0,0.4);
+            color: white;
+        }
+        .btn-rotate:active {
+            box-shadow: 0 0px 0 #c93b5b;
+        }
+
+        .btn-drop {
+            background: linear-gradient(180deg, #f6d365 0%, #fda085 100%);
+            box-shadow: 0 4px 0 #c86d51, 0 6px 12px rgba(0,0,0,0.4);
+        }
+        .btn-drop:active {
+            box-shadow: 0 0px 0 #c86d51;
+        }
+
+        /* 連鎖・ライン消去のポップアップアニメーション */
+        @keyframes popAnim {
+            0% { transform: scale(0.5) translateY(0); opacity: 0; }
+            30% { transform: scale(1.3) translateY(-10px); opacity: 1; }
+            80% { transform: scale(1.1) translateY(-20px); opacity: 1; }
+            100% { transform: scale(0.9) translateY(-30px); opacity: 0; }
+        }
+
+        .popup-text {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            font-weight: 900;
+            color: #ffeb3b;
+            text-shadow: 0 0 10px #ff5722, 2px 2px 0 #000;
+            pointer-events: none;
+            z-index: 50;
+            animation: popAnim 1s ease-out forwards;
+            white-space: nowrap;
+        }
+
+        /* スワップタイマーバー */
+        .timer-bar-bg {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 999px;
+            overflow: hidden;
+            height: 12px;
+        }
+        .timer-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00f2fe, #ff758c);
+            transition: width 0.1s linear;
+        }
+
+        /* キャラクター・スピリットカード */
+        .chara-card {
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+        }
+        .chara-card:hover {
+            transform: translateY(-2px);
+        }
+        .chara-selected {
+            border-color: #fde047 !important;
+            background: rgba(250, 204, 21, 0.18) !important;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.4);
+        }
+        .map-node {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .map-node:not(:disabled):hover {
+            transform: scale(1.08);
+        }
+
+        /* 画面シェイク＆全消し・B2Bバッジ演出 */
+        @keyframes boardShake {
+            0%, 100% { transform: translate(0, 0) scale(1.02); }
+            20% { transform: translate(-5px, 3px) scale(1.02); }
+            40% { transform: translate(5px, -3px) scale(1.02); }
+            60% { transform: translate(-4px, -2px) scale(1.02); }
+            80% { transform: translate(4px, 2px) scale(1.02); }
+        }
+        .shake-anim {
+            animation: boardShake 0.35s ease-in-out;
+        }
+
+        /* フィーバータイム枠線発光 */
+        @keyframes feverGlow {
+            0%, 100% { box-shadow: 0 0 25px rgba(250, 204, 21, 0.8), inset 0 0 15px rgba(250, 204, 21, 0.4); border-color: #fde047; }
+            50% { box-shadow: 0 0 35px rgba(244, 114, 182, 0.9), inset 0 0 20px rgba(56, 189, 248, 0.5); border-color: #f472b6; }
+        }
+        .fever-active {
+            animation: feverGlow 0.8s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col items-center justify-between p-1.5 sm:p-2">
+
+    <!-- ヘッダー：タイトルとスコア・スワップタイマー -->
+    <header id="app-header" class="w-full max-w-4xl flex flex-col items-center shrink-0">
+        <div class="w-full flex justify-between items-center bg-slate-800/80 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl border border-slate-700 shadow-lg">
+            <div class="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <button onclick="returnToTitle()" class="text-xs px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold shrink-0" title="タイトルへ">
+                    🏠
+                </button>
+                <div class="truncate">
+                    <h1 class="text-sm sm:text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-yellow-300 truncate">
+                        ぷよテト2S バトル＆探検
+                    </h1>
+                    <span id="mode-badge" class="inline-block text-[9px] sm:text-xs px-1.5 sm:px-2 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold truncate max-w-full">
+                        ぷよぷよ / テトリス 選択バトル
+                    </span>
+                </div>
+            </div>
+                <div class="text-right shrink-0 ml-2">
+                <div class="text-[9px] sm:text-[10px] text-slate-400">SCORE</div>
+                <div id="score-display" class="text-base sm:text-xl font-black text-yellow-300 leading-tight">0</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインゲームエリア -->
+    <main class="relative flex-1 min-h-0 flex items-center justify-center w-full max-w-4xl my-0.5 overflow-hidden">
+        
+        <!-- スタート・モード選択画面オーバーレイ -->
+        <div id="start-screen" class="absolute inset-0 z-40 bg-slate-900/95 backdrop-blur-md rounded-2xl sm:rounded-3xl flex flex-col items-center justify-between p-3 sm:p-5 text-center border border-slate-700 overflow-y-auto">
+            <div>
+                <div class="text-3xl sm:text-4xl font-black mb-0.5 tracking-wider">
+                    <span class="text-pink-400">ぷよ</span><span class="text-cyan-400">テト</span><span class="text-yellow-300">2S</span>
+                </div>
+                <p class="text-slate-300 text-xs sm:text-sm mb-2">
+                    「ぷよぷよ」か「テトリス」を選んでCPU対戦やスピリット探検に挑もう！
+                </p>
+            </div>
+
+            <!-- プレイスタイル選択（ぷよぷよ or テトリス） -->
+            <div class="w-full max-w-xl mb-2.5">
+                <div class="flex justify-between items-center mb-1 px-1">
+                    <span class="text-xs font-bold text-yellow-300">▼ 自分のプレイスタイルを選択（全モード共通）</span>
+                    <button onclick="openTrophyModal()" class="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/60 text-amber-200 font-bold hover:bg-amber-500/30">
+                        🏅 実績・称号 (<span id="title-badge-preview">駆け出しパズラー</span>)
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="style-btn-puyo" onclick="setPlayerStyle('puyo')" class="py-2 px-3 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black text-sm flex items-center justify-center gap-1.5 shadow-lg transition">
+                        🔴 ぷよぷよで遊ぶ
+                    </button>
+                    <button id="style-btn-tetris" onclick="setPlayerStyle('tetris')" class="py-2 px-3 rounded-xl border-2 border-slate-700 bg-slate-800/80 text-slate-400 font-black text-sm flex items-center justify-center gap-1.5 transition">
+                        🟦 テトリスで遊ぶ
+                    </button>
+                </div>
+            </div>
+
+            <!-- キャラクター選択セクション -->
+            <div class="w-full max-w-xl mb-2.5">
+                <div class="text-xs font-bold text-cyan-300 mb-1 text-left px-1">▼ 使用キャラクターを選択（固有スキル付き）</div>
+                <div id="chara-select-grid" class="grid grid-cols-5 gap-1.5 sm:gap-2">
+                    <!-- JSで動的生成 -->
+                </div>
+                <div id="selected-chara-desc" class="mt-1.5 text-xs bg-slate-800/90 border border-slate-700 rounded-xl p-2 text-left flex items-center justify-between">
+                    <!-- JSで動的更新 -->
+                </div>
+            </div>
+
+            <!-- モード選択ボタン -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl mb-2">
+                <button onclick="openAdventureMap()" class="game-btn py-2.5 px-4 text-sm sm:text-base sm:col-span-2" style="background: linear-gradient(180deg, #f59e0b 0%, #ea580c 100%); box-shadow: 0 4px 0 #9a3412; color: #fff;">
+                    🗺️ アドベンチャー（特殊ルール＆スピリット進化）
+                </button>
+                <button onclick="openCpuSetupModal()" class="game-btn py-2 px-4 text-xs sm:text-sm sm:col-span-2" style="background: linear-gradient(180deg, #38bdf8 0%, #ec4899 100%); box-shadow: 0 4px 0 #831843; color: #fff;">
+                    ⚔️ CPU対戦（強さ・戦術カスタマイズ）
+                </button>
+                <button onclick="startBigBangMode()" class="game-btn py-2 px-4 text-xs sm:text-sm text-white" style="background: linear-gradient(180deg, #a855f7, #7e22ce); box-shadow: 0 3px 0 #581c87;">
+                    💎 ビッグバン（連鎖のタネ60秒）
+                </button>
+                <button onclick="startBossRush()" class="game-btn py-2 px-4 text-xs sm:text-sm text-white" style="background: linear-gradient(180deg, #dc2626, #991b1b); box-shadow: 0 3px 0 #7f1d1d;">
+                    👑 ボスラッシュ（8連戦サバイバル）
+                </button>
+                <button onclick="startPracticeMode()" class="game-btn py-2 px-4 text-xs sm:text-sm text-white" style="background: linear-gradient(180deg, #10b981, #059669); box-shadow: 0 3px 0 #065f46;">
+                    🎓 とことん連鎖練習（階段ガイド）
+                </button>
+                <button onclick="openSettings()" class="game-btn py-2 px-4 text-xs sm:text-sm text-white" style="background: linear-gradient(180deg, #64748b, #475569); box-shadow: 0 3px 0 #334155;">
+                    ⚙️ プレイ設定・スキン変更
+                </button>
+            </div>
+
+            <div class="text-[11px] text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-700/50">
+                ← →:移動 / ↓:ソフト / Space:ドロップ / ↑・X:右回転 / Z:左回転 / C:ホールド / V:スキル発動
+            </div>
+        </div>
+
+        <!-- CPU対戦カスタマイズモーダル -->
+        <div id="cpu-setup-screen" class="hidden absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col justify-between p-5 border border-pink-500/50 overflow-y-auto">
+            <div>
+                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
+                    <h2 class="text-lg sm:text-xl font-black text-pink-400">⚔️ CPU対戦設定</h2>
+                    <button onclick="closeCpuSetupModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+                <div class="space-y-3 text-left text-xs sm:text-sm">
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <div class="font-bold text-cyan-300 mb-1.5">1. 相手のスタイル</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="cpu-opt-puyo" onclick="setCpuSetup('style', 'puyo')" class="py-2 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black">🔴 ぷよAI</button>
+                            <button id="cpu-opt-tetris" onclick="setCpuSetup('style', 'tetris')" class="py-2 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black">🟦 テトAI</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <div class="font-bold text-yellow-300 mb-1.5">2. CPUの強さ</div>
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button onclick="setCpuSetup('level', 'easy')" id="cpu-lv-easy" class="py-1.5 rounded-lg border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs">よわい</button>
+                            <button onclick="setCpuSetup('level', 'normal')" id="cpu-lv-normal" class="py-1.5 rounded-lg border-2 border-yellow-400 bg-yellow-500/25 text-yellow-200 font-bold text-xs">ふつう</button>
+                            <button onclick="setCpuSetup('level', 'hard')" id="cpu-lv-hard" class="py-1.5 rounded-lg border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs">つよい</button>
+                            <button onclick="setCpuSetup('level', 'god')" id="cpu-lv-god" class="py-1.5 rounded-lg border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs">鬼神</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <div class="font-bold text-emerald-300 mb-1.5">3. CPUの戦術タイプ</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setCpuSetup('tactic', 'rush')" id="cpu-tac-rush" class="py-2 rounded-xl border-2 border-emerald-400 bg-emerald-500/25 text-emerald-200 font-bold text-xs">⚡ 速攻タイプ（手数重視）</button>
+                            <button onclick="setCpuSetup('tactic', 'heavy')" id="cpu-tac-heavy" class="py-2 rounded-xl border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs">💥 大連鎖ロマン（火力重視）</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button onclick="launchCustomCpuBattle()" class="game-btn py-3 text-base mt-3">
+                🔥 バトル開始！
+            </button>
+        </div>
+
+        <!-- 実績・称号モーダル -->
+        <div id="trophy-screen" class="hidden absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col justify-between p-5 border border-amber-500/50 overflow-y-auto">
+            <div>
+                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
+                    <h2 class="text-lg sm:text-xl font-black text-amber-400">🏅 実績（トロフィー）＆称号</h2>
+                    <button onclick="closeTrophyModal()" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+                <p class="text-xs text-slate-300 text-left mb-2">達成した実績をクリックすると、バトル中に表示する称号を変更できます！</p>
+                <div id="trophy-list" class="space-y-2 text-left max-h-[270px] overflow-y-auto pr-1">
+                    <!-- JSで動的生成 -->
+                </div>
+            </div>
+            <button onclick="closeTrophyModal()" class="game-btn py-2.5 text-sm mt-3">閉じる</button>
+        </div>
+
+            <div class="text-[11px] text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-700/50">
+                ← →:移動 / ↓:ソフト / Space:ドロップ / ↑・X:右回転 / Z:左回転 / C:ホールド / V:スキル発動
+            </div>
+        </div>
+
+        <!-- アドベンチャー（スピリット探検）マップ画面 -->
+        <div id="adventure-screen" class="hidden absolute inset-0 z-40 bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col justify-between p-4 sm:p-5 border border-amber-500/50 overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                <div>
+                    <h2 class="text-lg sm:text-xl font-black text-amber-400">🗺️ スピリット探検マップ</h2>
+                    <p class="text-[11px] text-slate-300">ぷよぷよかテトリスを選んでステージを攻略しよう！</p>
+                </div>
+                <button onclick="closeAdventureMap()" class="text-xs px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold">
+                    戻る
+                </button>
+            </div>
+
+            <!-- アドベンチャー内のぷよ/テト切り替えバー -->
+            <div class="mt-2 bg-slate-800/90 rounded-2xl p-2.5 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span class="text-xs font-bold text-amber-300">🎮 探検で使うルール：</span>
+                <div class="grid grid-cols-2 gap-2 flex-1 max-w-xs">
+                    <button id="adv-style-puyo" onclick="setPlayerStyle('puyo')" class="py-1.5 px-3 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black text-xs transition">
+                        🔴 ぷよぷよ
+                    </button>
+                    <button id="adv-style-tetris" onclick="setPlayerStyle('tetris')" class="py-1.5 px-3 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black text-xs transition">
+                        🟦 テトリス
+                    </button>
+                </div>
+            </div>
+
+            <!-- 探検マップエリア -->
+            <div class="my-2 bg-slate-800/70 rounded-2xl p-3 border border-slate-700">
+                <div class="text-xs font-bold text-amber-300 mb-2">▼ 探検ルート（クリアすると次の道が開きます）</div>
+                <div id="adventure-nodes" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <!-- JSで動的生成 -->
+                </div>
+            </div>
+
+            <!-- 所持スピリット＆装備スロット -->
+            <div class="bg-slate-800/70 rounded-2xl p-3 border border-slate-700">
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-xs font-bold text-cyan-300">✨ 装備スピリット（最大2体までセット可能）</span>
+                    <span id="spirit-bonus-summary" class="text-[11px] text-yellow-300 font-bold">ボーナス: なし</span>
+                </div>
+                <div id="spirit-inventory" class="flex flex-wrap gap-2 min-h-[44px]">
+                    <!-- JSで動的生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- プレイ設定モーダルオーバーレイ -->
+        <div id="settings-screen" class="hidden absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col justify-between p-5 border border-cyan-500/50 overflow-y-auto">
+            <div>
+                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
+                    <h2 class="text-lg sm:text-xl font-black text-cyan-400">⚙️ プレイ設定（オプション）</h2>
+                    <button onclick="closeSettings()" class="text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+
+                <div class="space-y-3 text-left text-xs sm:text-sm">
+                    <!-- 自然落下スピード -->
+                    <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                        <div class="flex justify-between font-bold mb-1">
+                            <span class="text-yellow-300">落下スピード（自然落下）</span>
+                            <span id="val-dropSpeed" class="text-cyan-300">ふつう (Lv.3)</span>
+                        </div>
+                        <input id="opt-dropSpeed" type="range" min="1" max="10" value="3" class="w-full accent-cyan-400" oninput="updateSettingsUI()">
+                    </div>
+
+                    <!-- ソフトドロップ速度 (SDF) -->
+                    <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                        <div class="flex justify-between font-bold mb-1">
+                            <span class="text-pink-300">ソフトドロップ速度（↓長押し）</span>
+                            <span id="val-sdf" class="text-cyan-300">30ms</span>
+                        </div>
+                        <input id="opt-sdf" type="range" min="0" max="100" step="10" value="30" class="w-full accent-pink-400" oninput="updateSettingsUI()">
+                    </div>
+
+                    <!-- 横移動の溜め (DAS) -->
+                    <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                        <div class="flex justify-between font-bold mb-1">
+                            <span class="text-emerald-300">横移動の溜め時間（DAS）</span>
+                            <span id="val-das" class="text-cyan-300">130ms</span>
+                        </div>
+                        <input id="opt-das" type="range" min="50" max="250" step="10" value="130" class="w-full accent-emerald-400" oninput="updateSettingsUI()">
+                    </div>
+
+                    <!-- 横移動の連続速度 (ARR) -->
+                    <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                        <div class="flex justify-between font-bold mb-1">
+                            <span class="text-emerald-300">横移動の連射速度（ARR）</span>
+                            <span id="val-arr" class="text-cyan-300">30ms</span>
+                        </div>
+                        <input id="opt-arr" type="range" min="0" max="100" step="5" value="30" class="w-full accent-emerald-400" oninput="updateSettingsUI()">
+                    </div>
+
+                    <!-- ゴースト表示・サウンド設定 -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center justify-between bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 cursor-pointer">
+                            <span class="font-bold text-slate-200">ゴースト表示</span>
+                            <input id="opt-ghost" type="checkbox" checked class="w-4 h-4 accent-cyan-400" onchange="updateSettingsUI()">
+                        </label>
+                        <label class="flex items-center justify-between bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 cursor-pointer">
+                            <span class="font-bold text-slate-200">効果音 (SE)</span>
+                            <input id="opt-sound" type="checkbox" checked class="w-4 h-4 accent-cyan-400" onchange="updateSettingsUI()">
+                        </label>
+                    </div>
+
+                    <!-- スキン（見た目）変更 -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                            <div class="font-bold text-pink-300 mb-1">ぷよスキン</div>
+                            <select id="opt-puyoSkin" onchange="updateSettingsUI()" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-1 text-white font-bold">
+                                <option value="classic">クラシック</option>
+                                <option value="jewel">💎 宝石風</option>
+                                <option value="gummy">🍬 グミ風</option>
+                            </select>
+                        </div>
+                        <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
+                            <div class="font-bold text-cyan-300 mb-1">ミノスキン</div>
+                            <select id="opt-minoSkin" onchange="updateSettingsUI()" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-1 text-white font-bold">
+                                <option value="classic">スタンダード</option>
+                                <option value="neon">⚡ ネオン</option>
+                                <option value="retro">👾 レトロ枠</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+                <button onclick="resetSettings()" class="flex-1 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs sm:text-sm font-bold text-slate-200">
+                    初期設定に戻す
+                </button>
+                <button onclick="closeSettings()" class="flex-1 game-btn py-2.5 text-sm">
+                    完了して戻る
+                </button>
+            </div>
+        </div>
+
+        <!-- ゲームオーバー・リザルトオーバーレイ -->
+        <div id="gameover-screen" class="hidden absolute inset-0 z-40 bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center border border-slate-700">
+            <h2 id="result-title" class="text-3xl sm:text-4xl font-black text-red-400 mb-2">GAME OVER</h2>
+            <p id="result-subtitle" class="text-slate-300 text-sm mb-1">最終スコア</p>
+            <div id="final-score" class="text-4xl sm:text-5xl font-black text-yellow-300 mb-3">0</div>
+
+            <div id="spirit-reward-box" class="hidden bg-amber-500/20 border border-amber-400 rounded-2xl p-3 mb-4 max-w-sm w-full">
+                <div class="text-xs font-bold text-amber-300">✨ NEW SPIRIT GET!! ✨</div>
+                <div id="spirit-reward-name" class="text-base font-black text-white mt-0.5">スピリット名</div>
+                <div id="spirit-reward-desc" class="text-xs text-slate-200">効果説明</div>
+            </div>
+
+            <div class="flex flex-wrap justify-center gap-3">
+                <button id="btn-back-adventure" onclick="backToAdventureAfterBattle()" class="hidden game-btn py-2.5 px-5 text-sm sm:text-base" style="background: linear-gradient(180deg, #f59e0b, #ea580c); box-shadow: 0 4px 0 #9a3412; color: #fff;">
+                    🗺️ マップへ戻る
+                </button>
+                <button onclick="returnToTitle()" class="game-btn py-2.5 px-6 text-sm sm:text-base">
+                    🏠 タイトルへ戻る
+                </button>
+            </div>
+        </div>
+
+        <!-- プレイエリア（プレイヤー盤面 ＋ CPU盤面） -->
+        <div id="boards-area" class="flex items-center justify-center gap-1.5 sm:gap-5 w-full h-full px-0.5">
+            
+            <!-- プレイヤー側エリア -->
+            <div class="flex flex-col items-center justify-center gap-1 max-w-[54%] sm:max-w-none">
+                <!-- プレイヤー情報＆HP・スキルバー -->
+                <div id="player-hud" class="w-full bg-slate-800/90 border border-cyan-500/40 rounded-lg sm:rounded-xl px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-xs">
+                    <div class="flex justify-between items-center font-bold gap-1">
+                        <div class="truncate">
+                            <span id="player-title-tag" class="hidden sm:inline text-[10px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded mr-1">駆け出し</span>
+                            <span id="player-name-label" class="text-cyan-300">🍎 アルル風</span>
+                        </div>
+                        <span id="player-garbage-badge" class="text-red-400 font-black shrink-0"></span>
+                    </div>
+                    <div id="player-hp-row" class="hidden mt-0.5">
+                        <div class="flex justify-between text-[9px] sm:text-[10px] text-slate-300">
+                            <span>HP</span><span id="player-hp-text">100/100</span>
+                        </div>
+                        <div class="w-full h-1.5 sm:h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div id="player-hp-bar" class="h-full bg-emerald-400 transition-all" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                    <div class="mt-0.5 flex items-center gap-1">
+                        <button id="btn-use-skill" onclick="activatePlayerSkill()" class="px-1.5 py-0.5 rounded bg-yellow-500/30 border border-yellow-400/50 text-[9px] sm:text-[10px] font-black text-yellow-200 disabled:opacity-40 shrink-0" disabled>
+                            ⚡<span class="hidden sm:inline">必殺技 </span><span id="skill-charge-text">0%</span>
+                        </button>
+                        <button id="btn-auto-skill" onclick="toggleAutoSkill()" class="px-1 py-0.5 rounded bg-emerald-500/30 border border-emerald-400 text-[9px] sm:text-[10px] font-black text-emerald-200 shrink-0">
+                            AUTO:ON
+                        </button>
+                        <div class="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden min-w-[20px]">
+                            <div id="skill-charge-bar" class="h-full bg-yellow-400 transition-all" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <!-- フィーバーゲージ＆ビッグバン残り時間 -->
+                    <div class="mt-0.5 flex items-center gap-1">
+                        <span id="fever-label" class="text-[9px] sm:text-[10px] font-black text-pink-300 shrink-0">🔥FEVER</span>
+                        <div class="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div id="fever-bar" class="h-full bg-gradient-to-r from-pink-500 via-yellow-400 to-cyan-400 transition-all" style="width: 0%;"></div>
+                        </div>
+                        <span id="bigbang-timer-badge" class="hidden text-[9px] sm:text-[10px] font-black text-purple-300 bg-purple-900/60 px-1 rounded shrink-0">⏳60s</span>
+                    </div>
+                </div>
+
+                <div class="flex items-start justify-center gap-1 sm:gap-3">
+                    <!-- ぷよぷよ盤面コンテナ -->
+                    <div id="puyo-container" class="board-wrapper board-active flex flex-col items-center !p-1 sm:!p-1.5">
+                        <div class="w-full flex justify-between items-center px-1 mb-0.5">
+                            <span class="text-[10px] sm:text-xs font-black text-pink-400 tracking-wider">PUYO</span>
+                            <span id="puyo-warning-icons" class="text-[10px] sm:text-xs tracking-tighter"></span>
+                            <span id="puyo-allclear-badge" class="hidden text-[9px] px-1 py-0.2 rounded bg-yellow-400 text-slate-900 font-black animate-pulse">全消し!</span>
+                            <div class="flex items-center gap-0.5">
+                                <span class="hidden sm:inline text-[10px] text-slate-400">NEXT</span>
+                                <canvas id="puyo-next" width="38" height="40" class="rounded bg-slate-800 border border-slate-700"></canvas>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <canvas id="puyo-canvas"></canvas>
+                            <div id="puyo-popup-area" class="absolute inset-0 pointer-events-none"></div>
+                        </div>
+                    </div>
+
+                    <!-- テトリス盤面コンテナ -->
+                    <div id="tetris-container" class="hidden board-wrapper board-active flex flex-col items-center !p-1 sm:!p-1.5">
+                        <div class="w-full flex justify-between items-center px-1 mb-0.5">
+                            <div class="flex items-center gap-0.5">
+                                <span class="hidden sm:inline text-[10px] text-slate-400">HOLD</span>
+                                <canvas id="tetris-hold" width="26" height="26" class="rounded bg-slate-800 border border-slate-700"></canvas>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[10px] sm:text-xs font-black text-cyan-400 tracking-wider">TETRIS</span>
+                                <span id="tetris-warning-icons" class="text-[10px] leading-none"></span>
+                                <span id="tetris-b2b-badge" class="hidden text-[8px] px-1 rounded bg-pink-500 text-white font-black">B2B</span>
+                            </div>
+                            <div class="flex items-center gap-0.5">
+                                <span class="hidden sm:inline text-[10px] text-slate-400">NEXT</span>
+                                <canvas id="tetris-next" width="26" height="26" class="rounded bg-slate-800 border border-slate-700"></canvas>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <canvas id="tetris-canvas"></canvas>
+                            <div id="tetris-popup-area" class="absolute inset-0 pointer-events-none"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU対戦盤面エリア（対戦・アドベンチャー時のみ表示） -->
+            <div id="cpu-battle-area" class="hidden flex flex-col items-center gap-1 max-w-[44%] sm:max-w-none">
+                <div class="w-full bg-slate-800/90 border border-pink-500/40 rounded-lg sm:rounded-xl px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-xs">
+                    <div class="flex justify-between items-center font-bold gap-1">
+                        <span id="cpu-name-label" class="text-pink-300 truncate">🤖 CPU</span>
+                        <span id="cpu-garbage-badge" class="text-yellow-300 font-black shrink-0"></span>
+                    </div>
+                    <div id="cpu-hp-row" class="hidden mt-0.5">
+                        <div class="flex justify-between text-[9px] sm:text-[10px] text-slate-300">
+                            <span>HP</span><span id="cpu-hp-text">100/100</span>
+                        </div>
+                        <div class="w-full h-1.5 sm:h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div id="cpu-hp-bar" class="h-full bg-pink-500 transition-all" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="board-wrapper border-2 border-pink-500/50 flex flex-col items-center !p-1 sm:!p-1.5">
+                    <div class="w-full flex justify-between items-center px-1 mb-0.5">
+                        <span id="cpu-board-title" class="text-[9px] sm:text-[10px] font-black text-pink-300">CPU</span>
+                        <span id="cpu-warning-icons" class="text-[10px]"></span>
+                        <span id="cpu-score-label" class="text-[9px] sm:text-[10px] text-slate-400">0</span>
+                    </div>
+                    <div class="relative">
+                        <canvas id="cpu-canvas"></canvas>
+                        <div id="cpu-popup-area" class="absolute inset-0 pointer-events-none"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- タッチ・マウス用バーチャルコントローラー（スマホ・タブレット快適操作） -->
+    <footer id="app-footer" class="w-full max-w-md pt-0.5 pb-0.5 shrink-0">
+        <div class="grid grid-cols-5 gap-1.5 px-1.5">
+            <button id="ctrl-left" class="game-btn h-10 sm:h-10 text-base sm:text-lg">◀</button>
+            <button id="ctrl-down" class="game-btn h-10 sm:h-10 text-base sm:text-lg">▼</button>
+            <button id="ctrl-right" class="game-btn h-10 sm:h-10 text-base sm:text-lg">▶</button>
+            <button id="ctrl-rot-l" class="game-btn btn-rotate h-10 sm:h-10 text-xs sm:text-sm">↺左</button>
+            <button id="ctrl-rot-r" class="game-btn btn-rotate h-10 sm:h-10 text-xs sm:text-sm">↻右</button>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5 px-1.5 mt-1">
+            <button id="ctrl-hold" class="game-btn bg-slate-600 text-white h-8 sm:h-8 text-xs" style="background: linear-gradient(180deg, #64748b, #475569); box-shadow: 0 3px 0 #334155;">
+                HOLD
+            </button>
+            <button id="ctrl-skill" onclick="activatePlayerSkill()" class="game-btn h-8 sm:h-8 text-xs text-white" style="background: linear-gradient(180deg, #eab308, #ca8a04); box-shadow: 0 3px 0 #854d0e;">
+                ⚡ 必殺技 (自動ON)
+            </button>
+            <button id="ctrl-drop" class="game-btn btn-drop h-8 sm:h-8 text-xs">
+                ⚡ クイックドロップ
+            </button>
+        </div>
+    </footer>
+
+<script>
+// ==========================================
+// 1. グローバル状態・設定・マスターデータ
+// ==========================================
+let playerStyle = 'puyo'; // 'puyo' | 'tetris'
+let gameMode = 'adventure'; // 'adventure' | 'cpu' | 'bigbang' | 'bossrush' | 'practice'
+let isBattleMode = false;
+let isHpBattle = false;
+let isPracticeMode = false;
+let isBigBangMode = false;
+let isBossRushMode = false;
+let isGameOver = true; // 起動時（タイトル画面）は待機状態
+let isPaused = false;
+let score = 0;
+
+let playerHp = 100, playerMaxHp = 100;
+let cpuHp = 100, cpuMaxHp = 100;
+let skillCharge = 0;
+let autoSkillEnabled = true;
+
+let feverGauge = 0;
+let isFeverActive = false;
+let feverTimer = 0;
+let bigBangTimeLeft = 60;
+let bossRushIndex = 0;
+
+// プレイ設定
+const settings = {
+    dropSpeed: 3,
+    sdf: 30,
+    das: 130,
+    arr: 30,
+    ghost: true,
+    sound: true,
+    puyoSkin: 'classic',
+    minoSkin: 'classic'
+};
+
+// CPUカスタム設定
+const cpuCustomSetup = {
+    style: 'tetris',
+    level: 'normal',
+    tactic: 'rush'
+};
+
+// プレイアブルキャラクター定義
+const CHARACTERS = [
+    { id: 'arle', name: '🍎 アルル風', type: 'ぷよ派', skillName: 'ばよえ〜ん！', skillDesc: '相手に強力な12個のおじゃま攻撃＋HP小回復', color: 'text-pink-300' },
+    { id: 'tee', name: '🚀 ティ風', type: 'テト派', skillName: 'テトリス砲撃', skillDesc: '自分の下2段を自動消去＆相手に強いおじゃま送信', color: 'text-cyan-300' },
+    { id: 'ringo', name: '🍏 りんご風', type: '知性派', skillName: 'サイン・コサイン', skillDesc: '予告おじゃまを全消去＆フィーバーゲージ+50%', color: 'text-emerald-300' },
+    { id: 'amitie', name: '👒 アミティ風', type: '元気派', skillName: 'フェアリーリーフ', skillDesc: 'HPを30回復＆相手に8個のおじゃま攻撃', color: 'text-red-300' },
+    { id: 'schezo', name: '🗡️ シェゾ風', type: '闇の魔導師', skillName: 'アレイアード', skillDesc: '相手に特大16個のおじゃま攻撃！', color: 'text-purple-300' }
+];
+let selectedCharaId = 'arle';
+
+// アドベンチャー（スピリット探検）全8ステージ
+const ADVENTURE_STAGES = [
+    { id: 1, title: '1. はじまりの草原', enemyName: '🟢 みどりぷよ兵', cpuStyle: 'puyo', hp: 35, aiInterval: 1350, ruleName: '通常ルール', ruleKey: 'normal', spirit: { id: 'sp1', name: '草原の精霊', bonusType: 'atk', val: 15, desc: '攻撃力 +15%' } },
+    { id: 2, title: '2. ブロックの谷', enemyName: '🟦 テト見習い', cpuStyle: 'tetris', hp: 50, aiInterval: 1150, ruleName: '通常ルール', ruleKey: 'normal', spirit: { id: 'sp2', name: 'ブロックの騎士', bonusType: 'hp', val: 20, desc: '最大HP +20' } },
+    { id: 3, title: '3. おじゃまの荒野', enemyName: '🪨 岩ぷよゴーレム', cpuStyle: 'puyo', hp: 65, aiInterval: 1000, ruleName: '開始時おじゃま1段', ruleKey: 'start_garbage', spirit: { id: 'sp3', name: '大地の守護者', bonusType: 'def', val: 20, desc: '受けるおじゃま -20%' } },
+    { id: 4, title: '4. 封印の遺跡', enemyName: '🔮 遺跡の番人', cpuStyle: 'tetris', hp: 80, aiInterval: 900, ruleName: 'HOLD封印バトル', ruleKey: 'no_hold', spirit: { id: 'sp4', name: '古代の賢者', bonusType: 'charge', val: 25, desc: 'スキル溜まり +25%' } },
+    { id: 5, title: '5. 重力の塔', enemyName: '⚡ スピードスター', cpuStyle: 'puyo', hp: 95, aiInterval: 800, ruleName: '重力1.8倍バトル', ruleKey: 'fast_drop', spirit: { id: 'sp5', name: '疾風の妖精', bonusType: 'atk', val: 25, desc: '攻撃力 +25%' } },
+    { id: 6, title: '6. 灼熱の溶岩洞', enemyName: '🔥 フレイムナイト', cpuStyle: 'tetris', hp: 115, aiInterval: 700, ruleName: '開始時おじゃま2段', ruleKey: 'start_garbage2', spirit: { id: 'sp6', name: '炎の精霊王', bonusType: 'hp', val: 40, desc: '最大HP +40' } },
+    { id: 7, title: '7. 鏡の迷宮', enemyName: '🎭 シャドウマスター', cpuStyle: 'puyo', hp: 135, aiInterval: 620, ruleName: 'チャージ超加速', ruleKey: 'hyper_charge', spirit: { id: 'sp7', name: '幻影の魔導師', bonusType: 'charge', val: 40, desc: 'スキル溜まり +40%' } },
+    { id: 8, title: '8. 星屑の玉座 (BOSS)', enemyName: '👑 星の創造神', cpuStyle: 'tetris', hp: 165, aiInterval: 540, ruleName: '最終決戦：重力1.8倍', ruleKey: 'fast_drop', spirit: { id: 'sp8', name: '星屑の女神', bonusType: 'all', val: 20, desc: '全能力（攻・HP・溜まり）+20%' } }
+];
+
+// 実績（トロフィー）一覧
+const TROPHIES = [
+    { id: 'first_win', title: '初勝利の証', name: '初めてのバトル勝利', desc: 'CPU対戦または探検で1回勝利する' },
+    { id: 'chain_4', title: '連鎖の使い手', name: '4連鎖以上を達成', desc: 'ぷよぷよで4連鎖以上を決める' },
+    { id: 'tetris_clear', title: 'テトリスマスター', name: 'TETRIS（4ライン消し）達成', desc: 'テトリスで一度に4ライン消去する' },
+    { id: 'all_clear', title: 'パーフェクト', name: '全消し達成', desc: 'ぷよぷよの盤面をすべて消去する' },
+    { id: 'fever_star', title: 'フィーバースター', name: 'フィーバータイム突入', desc: 'フィーバーゲージを満タンにする' },
+    { id: 'adv_clear', title: '星屑の英雄', name: '探検モード全制覇', desc: 'アドベンチャーの全8ステージをクリアする' }
+];
+
+// セーブデータ（メモリ保持＋安全ストレージ）
+let saveData = {
+    clearedStages: [],
+    spiritLevels: {}, // { sp1: 1, ... }
+    equippedSpirits: [],
+    unlockedTrophies: [],
+    activeTitle: '駆け出しパズラー'
+};
+let currentAdventureStage = null;
+
+function loadSaveData() {
+    try {
+        const raw = localStorage.getItem('puyotet2s_save_v1');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            saveData = { ...saveData, ...parsed };
+        }
+    } catch (e) {}
+}
+function writeSaveData() {
+    try {
+        localStorage.setItem('puyotet2s_save_v1', JSON.stringify(saveData));
+    } catch (e) {}
+}
+
+function unlockTrophy(id) {
+    if (!saveData.unlockedTrophies.includes(id)) {
+        saveData.unlockedTrophies.push(id);
+        const tr = TROPHIES.find(t => t.id === id);
+        if (tr) {
+            showPopup(playerStyle, `🏅実績: ${tr.title}!`);
+            playSound('win');
+        }
+        writeSaveData();
+    }
+}
+
+// ==========================================
+// 2. サウンドエフェクト (Tone.js)
+// ==========================================
+let synth = null;
+function initAudio() {
+    if (!synth && typeof Tone !== 'undefined') {
+        try {
+            synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.2 }
+            }).toDestination();
+            synth.volume.value = -10;
+        } catch (e) {}
+    }
+}
+
+function playSound(type, chain = 1) {
+    if (!settings.sound) return;
+    initAudio();
+    if (!synth) return;
+    try {
+        if (Tone.context.state !== 'running') Tone.start();
+        const now = Tone.now();
+        if (type === 'move') synth.triggerAttackRelease('C5', '32n', now);
+        else if (type === 'rotate') synth.triggerAttackRelease('E5', '32n', now);
+        else if (type === 'drop') synth.triggerAttackRelease('G4', '16n', now);
+        else if (type === 'clear') {
+            const notes = ['C5', 'D5', 'E5', 'G5', 'A5', 'C6', 'D6', 'E6'];
+            const note = notes[Math.min(notes.length - 1, Math.max(0, chain - 1))];
+            synth.triggerAttackRelease(note, '8n', now);
+        } else if (type === 'skill' || type === 'fever') {
+            synth.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '8n', now);
+        } else if (type === 'win') {
+            synth.triggerAttackRelease(['C5', 'E5', 'G5', 'B5', 'C6'], '4n', now);
+        } else if (type === 'lose') {
+            synth.triggerAttackRelease(['G4', 'F#4', 'F4', 'E4'], '4n', now);
+        }
+    } catch (e) {}
+}
+
+// ==========================================
+// 3. UI・画面遷移・キャラクター＆スピリット管理
+// ==========================================
+function setPlayerStyle(style) {
+    playerStyle = style;
+    const isPuyo = style === 'puyo';
+
+    // タイトル画面ボタン
+    const btnP = document.getElementById('style-btn-puyo');
+    const btnT = document.getElementById('style-btn-tetris');
+    if (btnP && btnT) {
+        btnP.className = isPuyo
+            ? 'py-2 px-3 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black text-sm flex items-center justify-center gap-1.5 shadow-lg transition'
+            : 'py-2 px-3 rounded-xl border-2 border-slate-700 bg-slate-800/80 text-slate-400 font-black text-sm flex items-center justify-center gap-1.5 transition';
+        btnT.className = !isPuyo
+            ? 'py-2 px-3 rounded-xl border-2 border-cyan-400 bg-cyan-500/25 text-cyan-200 font-black text-sm flex items-center justify-center gap-1.5 shadow-lg transition'
+            : 'py-2 px-3 rounded-xl border-2 border-slate-700 bg-slate-800/80 text-slate-400 font-black text-sm flex items-center justify-center gap-1.5 transition';
+    }
+
+    // アドベンチャー画面ボタン
+    const advP = document.getElementById('adv-style-puyo');
+    const advT = document.getElementById('adv-style-tetris');
+    if (advP && advT) {
+        advP.className = isPuyo
+            ? 'py-1.5 px-3 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black text-xs transition'
+            : 'py-1.5 px-3 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black text-xs transition';
+        advT.className = !isPuyo
+            ? 'py-1.5 px-3 rounded-xl border-2 border-cyan-400 bg-cyan-500/25 text-cyan-200 font-black text-xs transition'
+            : 'py-1.5 px-3 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black text-xs transition';
+    }
+
+    // 盤面コンテナの表示切り替え
+    const pCont = document.getElementById('puyo-container');
+    const tCont = document.getElementById('tetris-container');
+    if (pCont && tCont) {
+        pCont.classList.toggle('hidden', !isPuyo);
+        tCont.classList.toggle('hidden', isPuyo);
+    }
+    resizeCanvases();
+}
+
+function initCharacterUI() {
+    const grid = document.getElementById('chara-select-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    CHARACTERS.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = `chara-card p-1.5 sm:p-2 rounded-xl border-2 text-center bg-slate-800/80 border-slate-700 ${c.id === selectedCharaId ? 'chara-selected' : ''}`;
+        btn.innerHTML = `<div class="text-base sm:text-xl">${c.name.split(' ')[0]}</div><div class="text-[10px] sm:text-xs font-black ${c.color} truncate">${c.name.split(' ')[1]}</div>`;
+        btn.onclick = () => {
+            selectedCharaId = c.id;
+            initCharacterUI();
+        };
+        grid.appendChild(btn);
+    });
+
+    const cur = CHARACTERS.find(c => c.id === selectedCharaId) || CHARACTERS[0];
+    const descBox = document.getElementById('selected-chara-desc');
+    if (descBox) {
+        descBox.innerHTML = `
+            <div>
+                <span class="font-black ${cur.color}">${cur.name}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-200 ml-1">${cur.type}</span>
+                <div class="text-[11px] text-slate-300 mt-0.5">⚡必殺技【${cur.skillName}】：${cur.skillDesc}</div>
+            </div>
+        `;
+    }
+    const titlePrev = document.getElementById('title-badge-preview');
+    if (titlePrev) titlePrev.textContent = saveData.activeTitle;
+}
+
+function getSpiritBonuses() {
+    let atk = 0, hp = 0, def = 0, charge = 0;
+    saveData.equippedSpirits.forEach(spId => {
+        const st = ADVENTURE_STAGES.find(s => s.spirit.id === spId);
+        if (!st) return;
+        const lv = saveData.spiritLevels[spId] || 1;
+        const mult = 1 + (lv - 1) * 0.25;
+        const v = Math.round(st.spirit.val * mult);
+        if (st.spirit.bonusType === 'atk') atk += v;
+        else if (st.spirit.bonusType === 'hp') hp += v;
+        else if (st.spirit.bonusType === 'def') def += v;
+        else if (st.spirit.bonusType === 'charge') charge += v;
+        else if (st.spirit.bonusType === 'all') { atk += v; hp += v; def += v; charge += v; }
+    });
+    return { atk, hp, def, charge };
+}
+
+function openAdventureMap() {
+    isGameOver = true;
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('gameover-screen').classList.add('hidden');
+    document.getElementById('adventure-screen').classList.remove('hidden');
+    renderAdventureMap();
+}
+
+function closeAdventureMap() {
+    document.getElementById('adventure-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+}
+
+function renderAdventureMap() {
+    const nodesEl = document.getElementById('adventure-nodes');
+    nodesEl.innerHTML = '';
+    ADVENTURE_STAGES.forEach((st, idx) => {
+        const isUnlocked = idx === 0 || saveData.clearedStages.includes(ADVENTURE_STAGES[idx - 1].id);
+        const isCleared = saveData.clearedStages.includes(st.id);
+        const btn = document.createElement('button');
+        btn.disabled = !isUnlocked;
+        btn.className = `map-node p-2.5 rounded-2xl border-2 text-left flex flex-col justify-between ${
+            isCleared ? 'bg-amber-500/20 border-amber-400 text-white' :
+            isUnlocked ? 'bg-slate-800 border-cyan-400 text-white' :
+            'bg-slate-900/70 border-slate-800 text-slate-500 opacity-60 cursor-not-allowed'
+        }`;
+        btn.innerHTML = `
+            <div class="flex justify-between items-center w-full">
+                <span class="text-[11px] font-black ${isCleared ? 'text-amber-300' : 'text-cyan-300'}">${st.title}</span>
+                <span class="text-xs">${isCleared ? '⭐' : isUnlocked ? '⚔️' : '🔒'}</span>
+            </div>
+            <div class="text-xs font-bold mt-1">${isUnlocked ? st.enemyName : '？？？'}</div>
+            <div class="text-[10px] text-slate-300 mt-0.5">${isUnlocked ? `HP:${st.hp} / ${st.ruleName}` : '前のステージをクリアで解放'}</div>
+        `;
+        if (isUnlocked) {
+            btn.onclick = () => startAdventureBattle(st);
+        }
+        nodesEl.appendChild(btn);
+    });
+
+    // 所持スピリット一覧
+    const invEl = document.getElementById('spirit-inventory');
+    invEl.innerHTML = '';
+    const ownedIds = Object.keys(saveData.spiritLevels);
+    if (ownedIds.length === 0) {
+        invEl.innerHTML = '<span class="text-xs text-slate-400">ステージをクリアするとスピリットが仲間になります！</span>';
+    } else {
+        ownedIds.forEach(spId => {
+            const st = ADVENTURE_STAGES.find(s => s.spirit.id === spId);
+            if (!st) return;
+            const lv = saveData.spiritLevels[spId] || 1;
+            const isEq = saveData.equippedSpirits.includes(spId);
+            const chip = document.createElement('button');
+            chip.className = `px-2.5 py-1 rounded-xl border text-xs font-bold transition ${
+                isEq ? 'bg-cyan-500/30 border-cyan-300 text-cyan-100' : 'bg-slate-900 border-slate-700 text-slate-300'
+            }`;
+            chip.textContent = `${isEq ? '✅' : '✨'} ${st.spirit.name} Lv.${lv} (${st.spirit.desc})`;
+            chip.onclick = () => toggleEquipSpirit(spId);
+            invEl.appendChild(chip);
+        });
+    }
+
+    const b = getSpiritBonuses();
+    document.getElementById('spirit-bonus-summary').textContent =
+        `ボーナス: 攻+${b.atk}% / HP+${b.hp} / 守+${b.def}% / 溜+${b.charge}%`;
+}
+
+function toggleEquipSpirit(spId) {
+    const idx = saveData.equippedSpirits.indexOf(spId);
+    if (idx >= 0) {
+        saveData.equippedSpirits.splice(idx, 1);
+    } else {
+        if (saveData.equippedSpirits.length >= 2) saveData.equippedSpirits.shift();
+        saveData.equippedSpirits.push(spId);
+    }
+    writeSaveData();
+    renderAdventureMap();
+}
+
+function openCpuSetupModal() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('cpu-setup-screen').classList.remove('hidden');
+    updateCpuSetupUI();
+}
+function closeCpuSetupModal() {
+    document.getElementById('cpu-setup-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+}
+function setCpuSetup(key, val) {
+    cpuCustomSetup[key] = val;
+    updateCpuSetupUI();
+}
+function updateCpuSetupUI() {
+    document.getElementById('cpu-opt-puyo').className = cpuCustomSetup.style === 'puyo'
+        ? 'py-2 rounded-xl border-2 border-pink-400 bg-pink-500/25 text-pink-200 font-black'
+        : 'py-2 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black';
+    document.getElementById('cpu-opt-tetris').className = cpuCustomSetup.style === 'tetris'
+        ? 'py-2 rounded-xl border-2 border-cyan-400 bg-cyan-500/25 text-cyan-200 font-black'
+        : 'py-2 rounded-xl border-2 border-slate-700 bg-slate-900 text-slate-400 font-black';
+
+    ['easy', 'normal', 'hard', 'god'].forEach(lv => {
+        const el = document.getElementById(`cpu-lv-${lv}`);
+        if (el) el.className = cpuCustomSetup.level === lv
+            ? 'py-1.5 rounded-lg border-2 border-yellow-400 bg-yellow-500/25 text-yellow-200 font-bold text-xs'
+            : 'py-1.5 rounded-lg border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs';
+    });
+    ['rush', 'heavy'].forEach(tac => {
+        const el = document.getElementById(`cpu-tac-${tac}`);
+        if (el) el.className = cpuCustomSetup.tactic === tac
+            ? 'py-2 rounded-xl border-2 border-emerald-400 bg-emerald-500/25 text-emerald-200 font-bold text-xs'
+            : 'py-2 rounded-xl border border-slate-600 bg-slate-900 text-slate-300 font-bold text-xs';
+    });
+}
+
+function openTrophyModal() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('trophy-screen').classList.remove('hidden');
+    const list = document.getElementById('trophy-list');
+    list.innerHTML = '';
+    TROPHIES.forEach(tr => {
+        const unlocked = saveData.unlockedTrophies.includes(tr.id);
+        const isActive = saveData.activeTitle === tr.title;
+        const row = document.createElement('button');
+        row.disabled = !unlocked;
+        row.className = `w-full p-2.5 rounded-xl border text-left flex justify-between items-center ${
+            isActive ? 'bg-amber-500/30 border-amber-300' :
+            unlocked ? 'bg-slate-800 border-slate-600 hover:border-amber-400' :
+            'bg-slate-900/60 border-slate-800 opacity-50'
+        }`;
+        row.innerHTML = `
+            <div>
+                <div class="text-xs font-black ${unlocked ? 'text-amber-300' : 'text-slate-400'}">${unlocked ? '🏅' : '🔒'} 【${tr.title}】 ${tr.name}</div>
+                <div class="text-[11px] text-slate-300">${tr.desc}</div>
+            </div>
+            <span class="text-xs font-bold text-cyan-300">${isActive ? '装備中' : unlocked ? '選択' : ''}</span>
+        `;
+        if (unlocked) {
+            row.onclick = () => {
+                saveData.activeTitle = tr.title;
+                writeSaveData();
+                initCharacterUI();
+                openTrophyModal();
+            };
+        }
+        list.appendChild(row);    });
+}
+function closeTrophyModal() {
+    document.getElementById('trophy-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+}
+
+function openSettings() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('settings-screen').classList.remove('hidden');
+}
+function closeSettings() {
+    document.getElementById('settings-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+}
+function updateSettingsUI() {
+    settings.dropSpeed = parseInt(document.getElementById('opt-dropSpeed').value, 10);
+    settings.sdf = parseInt(document.getElementById('opt-sdf').value, 10);
+    settings.das = parseInt(document.getElementById('opt-das').value, 10);
+    settings.arr = parseInt(document.getElementById('opt-arr').value, 10);
+    settings.ghost = document.getElementById('opt-ghost').checked;
+    settings.sound = document.getElementById('opt-sound').checked;
+    settings.puyoSkin = document.getElementById('opt-puyoSkin').value;
+    settings.minoSkin = document.getElementById('opt-minoSkin').value;
+
+    const labels = ['超ゆっくり', 'ゆっくり', 'ふつう', 'やや速い', '速い', '高速', '超高速', '達人', '神速', '限界'];
+    document.getElementById('val-dropSpeed').textContent = `${labels[settings.dropSpeed - 1]} (Lv.${settings.dropSpeed})`;
+    document.getElementById('val-sdf').textContent = settings.sdf === 0 ? '0ms (瞬間落下)' : `${settings.sdf}ms`;
+    document.getElementById('val-das').textContent = `${settings.das}ms`;
+    document.getElementById('val-arr').textContent = settings.arr === 0 ? '0ms (瞬間移動)' : `${settings.arr}ms`;
+}
+function resetSettings() {
+    document.getElementById('opt-dropSpeed').value = 3;
+    document.getElementById('opt-sdf').value = 30;
+    document.getElementById('opt-das').value = 130;
+    document.getElementById('opt-arr').value = 30;
+    document.getElementById('opt-ghost').checked = true;
+    document.getElementById('opt-sound').checked = true;
+    document.getElementById('opt-puyoSkin').value = 'classic';
+    document.getElementById('opt-minoSkin').value = 'classic';
+    updateSettingsUI();
+}
+
+function returnToTitle() {
+    isGameOver = true;
+    isBattleMode = false;
+    isHpBattle = false;
+    isPracticeMode = false;
+    isBigBangMode = false;
+    isBossRushMode = false;
+    document.getElementById('adventure-screen').classList.add('hidden');
+    document.getElementById('cpu-setup-screen').classList.add('hidden');
+    document.getElementById('settings-screen').classList.add('hidden');
+    document.getElementById('trophy-screen').classList.add('hidden');
+    document.getElementById('gameover-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('hidden');
+    initCharacterUI();
+}
+
+function backToAdventureAfterBattle() {
+    document.getElementById('gameover-screen').classList.add('hidden');
+    openAdventureMap();
+}
+
+// ==========================================
+// 4. ゲーム開始・モード別初期化
+// ==========================================
+function prepareBattleCommon(opts) {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('adventure-screen').classList.add('hidden');
+    document.getElementById('cpu-setup-screen').classList.add('hidden');
+    document.getElementById('gameover-screen').classList.add('hidden');
+
+    isGameOver = false;
+    score = 0;
+    updateScoreUI();
+    skillCharge = 0;
+    feverGauge = 0;
+    isFeverActive = false;
+    feverTimer = 0;
+    particles = [];
+
+    isBattleMode = !!opts.battle;
+    isHpBattle = !!opts.hpBattle;
+    isPracticeMode = !!opts.practice;
+    isBigBangMode = !!opts.bigbang;
+    isBossRushMode = !!opts.bossrush;
+
+    const chara = CHARACTERS.find(c => c.id === selectedCharaId) || CHARACTERS[0];
+    document.getElementById('player-name-label').textContent = chara.name;
+    document.getElementById('player-title-tag').textContent = saveData.activeTitle;
+    document.getElementById('mode-badge').textContent = opts.badge || 'バトル';
+
+    // CPUエリア表示切り替え
+    const cpuArea = document.getElementById('cpu-battle-area');
+    cpuArea.classList.toggle('hidden', !isBattleMode);
+
+    // HPバー表示切り替え
+    document.getElementById('player-hp-row').classList.toggle('hidden', !isHpBattle);
+    document.getElementById('cpu-hp-row').classList.toggle('hidden', !isHpBattle);
+
+    // ビッグバンタイマー表示
+    const bbBadge = document.getElementById('bigbang-timer-badge');
+    bbBadge.classList.toggle('hidden', !isBigBangMode);
+    if (isBigBangMode) {
+        bigBangTimeLeft = 60;
+        bbBadge.textContent = '⏳60s';
+    }
+
+    const bonuses = getSpiritBonuses();
+    playerMaxHp = 100 + bonuses.hp;
+    playerHp = playerMaxHp;
+    if (isHpBattle) {
+        cpuMaxHp = opts.cpuHp || 80;
+        cpuHp = cpuMaxHp;
+    }
+    updateHpUI();
+    updateSkillUI();
+    updateFeverUI();
+
+    setPlayerStyle(playerStyle);
+    puyo.init(opts.ruleKey || 'normal');
+    tetris.init(opts.ruleKey || 'normal');
+
+    if (isBattleMode) {
+        document.getElementById('cpu-name-label').textContent = opts.cpuName || '🤖 CPU';
+        document.getElementById('cpu-board-title').textContent = opts.cpuStyle === 'puyo' ? 'CPU PUYO' : 'CPU TETRIS';
+        cpu.init(opts.cpuStyle || 'tetris', opts.aiInterval || 900, opts.tactic || 'rush');
+    }
+
+    if (isBigBangMode) {
+        loadBigBangSeed();
+    }
+
+    resizeCanvases();
+}
+
+function startAdventureBattle(stage) {
+    currentAdventureStage = stage;
+    prepareBattleCommon({
+        battle: true,
+        hpBattle: true,
+        badge: `探検 ${stage.title} (${stage.ruleName})`,
+        cpuName: stage.enemyName,
+        cpuStyle: stage.cpuStyle,
+        cpuHp: stage.hp,
+        aiInterval: stage.aiInterval,
+        ruleKey: stage.ruleKey,
+        tactic: stage.id % 2 === 0 ? 'heavy' : 'rush'
+    });
+}
+
+function launchCustomCpuBattle() {
+    currentAdventureStage = null;
+    const speedMap = { easy: 1300, normal: 900, hard: 600, god: 360 };
+    const lvName = { easy: 'よわい', normal: 'ふつう', hard: 'つよい', god: '鬼神' }[cpuCustomSetup.level];
+    prepareBattleCommon({
+        battle: true,
+        hpBattle: false,
+        badge: `CPU対戦 (${lvName}・${cpuCustomSetup.tactic === 'rush' ? '速攻' : '大連鎖'})`,
+        cpuName: `🤖 CPU (${lvName})`,
+        cpuStyle: cpuCustomSetup.style,
+        aiInterval: speedMap[cpuCustomSetup.level],
+        tactic: cpuCustomSetup.tactic
+    });
+}
+
+function startBigBangMode() {
+    currentAdventureStage = null;
+    prepareBattleCommon({
+        battle: false,
+        hpBattle: false,
+        bigbang: true,
+        badge: '💎 ビッグバン（60秒連鎖のタネ）'
+    });
+}
+
+function startBossRush() {
+    currentAdventureStage = null;
+    bossRushIndex = 0;
+    const st = ADVENTURE_STAGES[0];
+    prepareBattleCommon({
+        battle: true,
+        hpBattle: true,
+        bossrush: true,
+        badge: `👑 ボスラッシュ 1/${ADVENTURE_STAGES.length}戦目`,
+        cpuName: st.enemyName,
+        cpuStyle: st.cpuStyle,
+        cpuHp: Math.round(st.hp * 0.8),
+        aiInterval: st.aiInterval,
+        tactic: 'rush'
+    });
+}
+
+function startPracticeMode() {
+    currentAdventureStage = null;
+    prepareBattleCommon({
+        battle: false,
+        hpBattle: false,
+        practice: true,
+        badge: '🎓 とことん連鎖練習（階段積みガイド）'
+    });
+}
+
+function addScore(pts) {
+    score += pts;
+    updateScoreUI();
+}
+function updateScoreUI() {
+    const el = document.getElementById('score-display');
+    if (el) el.textContent = score.toLocaleString();
+}
+function updateHpUI() {
+    document.getElementById('player-hp-text').textContent = `${Math.max(0, playerHp)}/${playerMaxHp}`;
+    document.getElementById('player-hp-bar').style.width = `${Math.max(0, (playerHp / playerMaxHp) * 100)}%`;
+    document.getElementById('cpu-hp-text').textContent = `${Math.max(0, cpuHp)}/${cpuMaxHp}`;
+    document.getElementById('cpu-hp-bar').style.width = `${Math.max(0, (cpuHp / cpuMaxHp) * 100)}%`;
+}
+
+function addSkillCharge(amount) {
+    const b = getSpiritBonuses();
+    const ruleMult = (currentAdventureStage && currentAdventureStage.ruleKey === 'hyper_charge') ? 1.8 : 1.0;
+    const gain = Math.round(amount * (1 + b.charge / 100) * ruleMult);
+    skillCharge = Math.min(100, skillCharge + gain);
+    updateSkillUI();
+    if (skillCharge >= 100 && autoSkillEnabled && !isGameOver) {
+        setTimeout(() => {
+            if (skillCharge >= 100 && !isGameOver) activatePlayerSkill();
+        }, 250);
+    }
+}
+
+function updateSkillUI() {
+    const btn = document.getElementById('btn-use-skill');
+    const txt = document.getElementById('skill-charge-text');
+    const bar = document.getElementById('skill-charge-bar');
+    if (txt) txt.textContent = `${skillCharge}%`;
+    if (bar) bar.style.width = `${skillCharge}%`;
+    if (btn) btn.disabled = skillCharge < 100;
+}
+
+function toggleAutoSkill() {
+    autoSkillEnabled = !autoSkillEnabled;
+    const btn = document.getElementById('btn-auto-skill');
+    const fBtn = document.getElementById('ctrl-skill');
+    if (btn) {
+        btn.textContent = autoSkillEnabled ? 'AUTO:ON' : 'AUTO:OFF';
+        btn.className = autoSkillEnabled
+            ? 'px-1 py-0.5 rounded bg-emerald-500/30 border border-emerald-400 text-[9px] sm:text-[10px] font-black text-emerald-200 shrink-0'
+            : 'px-1 py-0.5 rounded bg-slate-700 border border-slate-500 text-[9px] sm:text-[10px] font-black text-slate-300 shrink-0';
+    }
+    if (fBtn) fBtn.textContent = autoSkillEnabled ? '⚡ 必殺技 (自動ON)' : '⚡ 必殺技 (手動)';
+}
+
+function activatePlayerSkill() {
+    if (skillCharge < 100 || isGameOver) return;
+    skillCharge = 0;
+    updateSkillUI();
+    playSound('skill');
+    triggerBoardShake();
+
+    const chara = CHARACTERS.find(c => c.id === selectedCharaId) || CHARACTERS[0];
+    showPopup(playerStyle, `⚡${chara.skillName}!`);
+
+    if (chara.id === 'arle') {
+        if (isHpBattle) { playerHp = Math.min(playerMaxHp, playerHp + 15); updateHpUI(); }
+        sendAttackToCpu(12);
+    } else if (chara.id === 'tee') {
+        if (playerStyle === 'tetris') tetris.clearBottomLines(2);
+        else puyo.clearBottomRows(2);
+        sendAttackToCpu(10);
+    } else if (chara.id === 'ringo') {
+        puyo.pendingGarbage = 0;
+        tetris.pendingGarbage = 0;
+        updateGarbageIcons();
+        addFeverGauge(50);
+        sendAttackToCpu(6);
+    } else if (chara.id === 'amitie') {
+        if (isHpBattle) { playerHp = Math.min(playerMaxHp, playerHp + 30); updateHpUI(); }
+        sendAttackToCpu(8);
+    } else if (chara.id === 'schezo') {
+        sendAttackToCpu(16);
+    }
+}
+
+function addFeverGauge(amount) {
+    if (isFeverActive) return;
+    feverGauge = Math.min(100, feverGauge + amount);
+    if (feverGauge >= 100) {
+        isFeverActive = true;
+        feverTimer = 12000; // 12秒間
+        playSound('fever');
+        showPopup(playerStyle, '🔥FEVER TIME!!');
+        unlockTrophy('fever_star');
+    }
+    updateFeverUI();
+}
+
+function updateFeverUI() {
+    const bar = document.getElementById('fever-bar');
+    const lbl = document.getElementById('fever-label');
+    const pCont = document.getElementById('puyo-container');
+    const tCont = document.getElementById('tetris-container');
+    if (bar) bar.style.width = `${isFeverActive ? (feverTimer / 12000) * 100 : feverGauge}%`;
+    if (lbl) lbl.textContent = isFeverActive ? `🔥FEVER(${Math.ceil(feverTimer / 1000)}s)` : '🔥FEVER';
+    if (pCont) pCont.classList.toggle('fever-active', isFeverActive && playerStyle === 'puyo');
+    if (tCont) tCont.classList.toggle('fever-active', isFeverActive && playerStyle === 'tetris');
+}
+
+function triggerBoardShake() {
+    const el = document.getElementById(playerStyle === 'puyo' ? 'puyo-container' : 'tetris-container');
+    if (!el) return;
+    el.classList.remove('shake-anim');
+    void el.offsetWidth;
+    el.classList.add('shake-anim');
+}
+
+function showPopup(target, text) {
+    const id = target === 'cpu' ? 'cpu-popup-area' : (target === 'tetris' ? 'tetris-popup-area' : 'puyo-popup-area');
+    const area = document.getElementById(id);
+    if (!area) return;
+    const div = document.createElement('div');
+    div.className = 'popup-text';
+    div.textContent = text;
+    area.appendChild(div);
+    setTimeout(() => div.remove(), 1000);
+}
+
+// ==========================================
+// 5. おじゃま攻撃・相殺システム
+// ==========================================
+function formatGarbageIcons(count) {
+    if (count <= 0) return '';
+    let rem = count;
+    let str = '';
+    while (rem >= 30) { str += '👑'; rem -= 30; }
+    while (rem >= 18) { str += '⭐'; rem -= 18; }
+    while (rem >= 6) { str += '🪨'; rem -= 6; }
+    while (rem >= 1) { str += '⚪'; rem -= 1; }
+    return str.slice(0, 6);
+}
+
+function updateGarbageIcons() {
+    const pG = playerStyle === 'puyo' ? puyo.pendingGarbage : tetris.pendingGarbage;
+    const pIcons = formatGarbageIcons(pG);
+    document.getElementById('puyo-warning-icons').textContent = playerStyle === 'puyo' ? pIcons : '';
+    document.getElementById('tetris-warning-icons').textContent = playerStyle === 'tetris' ? pIcons : '';
+    document.getElementById('player-garbage-badge').textContent = pG > 0 ? `予告:${pG}` : '';
+
+    if (isBattleMode) {
+        const cG = cpu.pendingGarbage;
+        document.getElementById('cpu-warning-icons').textContent = formatGarbageIcons(cG);
+        document.getElementById('cpu-garbage-badge').textContent = cG > 0 ? `予告:${cG}` : '';
+    }
+}
+
+function resolvePlayerAttack(rawPower) {
+    if (rawPower <= 0) return;
+    const bonuses = getSpiritBonuses();
+    let power = Math.max(1, Math.round(rawPower * (1 + bonuses.atk / 100) * (isFeverActive ? 1.5 : 1.0)));
+
+    addSkillCharge(power * 5);
+    addFeverGauge(power * 4);
+
+    // 相殺処理
+    const myTarget = playerStyle === 'puyo' ? puyo : tetris;
+    if (myTarget.pendingGarbage > 0) {
+        const offset = Math.min(myTarget.pendingGarbage, power);
+        myTarget.pendingGarbage -= offset;
+        power -= offset;
+        showPopup(playerStyle, `⚔️相殺 -${offset}!`);
+        addFeverGauge(offset * 3);
+        updateGarbageIcons();
+    }
+
+    if (power > 0 && isBattleMode) {
+        sendAttackToCpu(power);
+    }
+}
+
+function sendAttackToCpu(power) {
+    if (!isBattleMode || isGameOver) return;
+    cpu.pendingGarbage += power;
+    updateGarbageIcons();
+
+    if (isHpBattle) {
+        cpuHp = Math.max(0, cpuHp - power * 2);
+        updateHpUI();
+        if (cpuHp <= 0) {
+            handleBattleWin();
+        }
+    }
+}
+
+function sendAttackToPlayer(rawPower) {
+    if (isGameOver) return;
+    const bonuses = getSpiritBonuses();
+    const power = Math.max(1, Math.round(rawPower * (1 - bonuses.def / 100)));
+
+    // CPU側の予告おじゃま相殺
+    if (cpu.pendingGarbage > 0) {
+        const offset = Math.min(cpu.pendingGarbage, power);
+        cpu.pendingGarbage -= offset;
+        const rem = power - offset;
+        updateGarbageIcons();
+        if (rem <= 0) return;
+        applyGarbageToPlayer(rem);
+    } else {
+        applyGarbageToPlayer(power);
+    }
+}
+
+function applyGarbageToPlayer(power) {
+    if (playerStyle === 'puyo') puyo.pendingGarbage += power;
+    else tetris.pendingGarbage += power;
+    updateGarbageIcons();
+
+    if (isHpBattle) {
+        playerHp = Math.max(0, playerHp - Math.max(1, Math.round(power * 1.5)));
+        updateHpUI();
+        if (playerHp <= 0) {
+            triggerGameOver(false);
+        }
+    }
+}
+
+function handleBattleWin() {
+    if (isGameOver) return;
+    playSound('win');
+    unlockTrophy('first_win');
+
+    if (isBossRushMode) {
+        bossRushIndex++;
+        if (bossRushIndex < ADVENTURE_STAGES.length) {
+            const st = ADVENTURE_STAGES[bossRushIndex];
+            playerHp = Math.min(playerMaxHp, playerHp + 25); // 連戦回復
+            cpuMaxHp = Math.round(st.hp * 0.85);
+            cpuHp = cpuMaxHp;
+            updateHpUI();
+            document.getElementById('mode-badge').textContent = `👑 ボスラッシュ ${bossRushIndex + 1}/${ADVENTURE_STAGES.length}戦目`;
+            document.getElementById('cpu-name-label').textContent = st.enemyName;
+            document.getElementById('cpu-board-title').textContent = st.cpuStyle === 'puyo' ? 'CPU PUYO' : 'CPU TETRIS';
+            cpu.init(st.cpuStyle, st.aiInterval, 'rush');
+            showPopup(playerStyle, `🎉撃破！次戦へ！`);
+            return;
+        }
+    }
+
+    triggerGameOver(true);
+}
+
+function triggerGameOver(isWin) {
+    if (isGameOver) return;
+    isGameOver = true;
+    playSound(isWin ? 'win' : 'lose');
+
+    const titleEl = document.getElementById('result-title');
+    const subEl = document.getElementById('result-subtitle');
+    const rewardBox = document.getElementById('spirit-reward-box');
+    const backAdvBtn = document.getElementById('btn-back-adventure');
+
+    rewardBox.classList.add('hidden');
+    backAdvBtn.classList.add('hidden');
+
+    if (isWin) {
+        titleEl.textContent = 'YOU WIN!! 🎉';
+        titleEl.className = 'text-3xl sm:text-4xl font-black text-yellow-300 mb-2';
+        subEl.textContent = '勝利スコア';
+
+        if (currentAdventureStage) {
+            if (!saveData.clearedStages.includes(currentAdventureStage.id)) {
+                saveData.clearedStages.push(currentAdventureStage.id);
+            }
+            const sp = currentAdventureStage.spirit;
+            const prevLv = saveData.spiritLevels[sp.id] || 0;
+            const nextLv = prevLv + 1;
+            saveData.spiritLevels[sp.id] = nextLv;
+            if (saveData.equippedSpirits.length < 2 && !saveData.equippedSpirits.includes(sp.id)) {
+                saveData.equippedSpirits.push(sp.id);
+            }
+            if (saveData.clearedStages.length >= ADVENTURE_STAGES.length) {
+                unlockTrophy('adv_clear');
+            }
+            writeSaveData();
+
+            rewardBox.classList.remove('hidden');
+            document.getElementById('spirit-reward-name').textContent = `${sp.name} (Lv.${nextLv})`;
+            document.getElementById('spirit-reward-desc').textContent = sp.desc;
+            backAdvBtn.classList.remove('hidden');
+        }
+    } else {
+        titleEl.textContent = isBigBangMode ? 'TIME UP! ⏰' : 'GAME OVER';
+        titleEl.className = `text-3xl sm:text-4xl font-black ${isBigBangMode ? 'text-purple-300' : 'text-red-400'} mb-2`;
+        subEl.textContent = '最終スコア';
+        if (currentAdventureStage) backAdvBtn.classList.remove('hidden');
+    }
+
+    document.getElementById('final-score').textContent = score.toLocaleString();
+    document.getElementById('gameover-screen').classList.remove('hidden');
+}
+
+// ==========================================
+// 6. パーティクル演出
+// ==========================================
+let particles = [];
+function spawnParticles(canvasId, gx, gy, cols, rows, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const cw = canvas.width / cols;
+    const ch = canvas.height / rows;
+    const cx = (gx + 0.5) * cw;
+    const cy = (gy + 0.5) * ch;
+    for (let i = 0; i < 6; i++) {
+        const ang = (Math.PI * 2 * i) / 6 + Math.random() * 0.5;
+        const spd = 1.5 + Math.random() * 2.5;
+        particles.push({
+            canvasId,
+            x: cx,
+            y: cy,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 1,
+            color,
+            life: 1.0
+        });
+    }
+}
+
+function updateAndDrawParticles(ctx, canvasId) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        if (p.canvasId !== canvasId) continue;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= 0.04;
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5 * p.life, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ==========================================
+// 7. ぷよぷよエンジン（本家準拠：連結・クイックターン・全消し）
+// ==========================================
+const PUYO_COLORS = [null, '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#cbd5e1']; // 1..5色, 6おじゃま
+const puyo = {
+    cols: 6,
+    rows: 12,
+    board: [],
+    cur: null,
+    next1: null,
+    next2: null,
+    dropTimer: 0,
+    pendingGarbage: 0,
+    allClearBonus: false,
+    lastRotFailTime: 0,
+
+    init(ruleKey = 'normal') {
+        this.board = Array.from({ length: this.rows }, () => Array(this.cols).fill(0));
+        this.pendingGarbage = 0;
+        this.allClearBonus = false;
+        this.dropTimer = 0;
+
+        if (ruleKey === 'start_garbage' || ruleKey === 'start_garbage2') {
+            const rowsToFill = ruleKey === 'start_garbage2' ? 2 : 1;
+            for (let r = this.rows - rowsToFill; r < this.rows; r++) {
+                for (let c = 0; c < this.cols; c++) this.board[r][c] = 6;
+            }
+        }
+        this.next1 = this.randomPair();
+        this.next2 = this.randomPair();
+        this.spawn();
+    },
+
+    randomPair() {
+        const maxColor = isFeverActive ? 3 : 4; // フィーバー中は3色で連鎖しやすい
+        return {
+            c1: 1 + Math.floor(Math.random() * maxColor),
+            c2: 1 + Math.floor(Math.random() * maxColor)
+        };
+    },
+
+    spawn() {
+        // 窒息判定（3列目最上段）
+        if (this.board[0][2] !== 0) {
+            if (isPracticeMode || isBigBangMode) {
+                this.board = Array.from({ length: this.rows }, () => Array(this.cols).fill(0));
+                if (isBigBangMode) loadBigBangSeed();
+            } else {
+                triggerGameOver(false);
+                return;
+            }
+        }
+        this.cur = {
+            x: 2,
+            y: 1,
+            rot: 0, // 0:上, 1:右, 2:下, 3:左
+            c1: this.next1.c1,
+            c2: this.next1.c2
+        };
+        this.next1 = this.next2;
+        this.next2 = this.randomPair();
+        this.drawNext();
+    },
+
+    getSubPos(x, y, rot) {
+        if (rot === 0) return { x, y: y - 1 };
+        if (rot === 1) return { x: x + 1, y };
+        if (rot === 2) return { x, y: y + 1 };
+        return { x: x - 1, y };
+    },
+
+    isValid(x, y, rot) {
+        const sub = this.getSubPos(x, y, rot);
+        if (x < 0 || x >= this.cols || y >= this.rows) return false;
+        if (sub.x < 0 || sub.x >= this.cols || sub.y >= this.rows) return false;
+        if (y >= 0 && this.board[y][x] !== 0) return false;
+        if (sub.y >= 0 && this.board[sub.y][sub.x] !== 0) return false;
+        return true;
+    },
+
+    move(dx) {
+        if (!this.cur || isGameOver) return;
+        if (this.isValid(this.cur.x + dx, this.cur.y, this.cur.rot)) {
+            this.cur.x += dx;
+            playSound('move');
+        }
+    },
+
+    rotate(dir) {
+        if (!this.cur || isGameOver) return;
+        const nextRot = (this.cur.rot + dir + 4) % 4;
+        // 通常回転＆壁蹴り
+        const kicks = [0, -1, 1];
+        for (const kx of kicks) {
+            if (this.isValid(this.cur.x + kx, this.cur.y, nextRot)) {
+                this.cur.x += kx;
+                this.cur.rot = nextRot;
+                playSound('rotate');
+                return;
+            }
+        }
+        // 床蹴り（下向き回転時）
+        if (nextRot === 2 && this.isValid(this.cur.x, this.cur.y - 1, nextRot)) {
+            this.cur.y -= 1;
+            this.cur.rot = nextRot;
+            playSound('rotate');
+            return;
+        }
+        // 180度クイックターン（左右塞がれているときに2回押し）
+        const now = performance.now();
+        if (now - this.lastRotFailTime < 450) {
+            const flipRot = (this.cur.rot + 2) % 4;
+            if (this.isValid(this.cur.x, this.cur.y, flipRot)) {
+                this.cur.rot = flipRot;
+                playSound('rotate');
+            } else if (this.isValid(this.cur.x, this.cur.y - 1, flipRot)) {
+                this.cur.y -= 1;
+                this.cur.rot = flipRot;
+                playSound('rotate');
+            }
+            this.lastRotFailTime = 0;
+        } else {
+            this.lastRotFailTime = now;
+        }
+    },
+
+    softDrop() {
+        if (!this.cur || isGameOver) return;
+        if (this.isValid(this.cur.x, this.cur.y + 1, this.cur.rot)) {
+            this.cur.y += 1;
+            addScore(1);
+        } else {
+            this.lockPiece();
+        }
+    },
+
+    hardDrop() {
+        if (!this.cur || isGameOver) return;
+        while (this.isValid(this.cur.x, this.cur.y + 1, this.cur.rot)) {
+            this.cur.y += 1;
+            addScore(2);
+        }
+        this.lockPiece();
+    },
+
+    lockPiece() {
+        if (!this.cur) return;
+        const sub = this.getSubPos(this.cur.x, this.cur.y, this.cur.rot);
+        if (this.cur.y >= 0) this.board[this.cur.y][this.cur.x] = this.cur.c1;
+        if (sub.y >= 0) this.board[sub.y][sub.x] = this.cur.c2;
+        this.cur = null;
+        playSound('drop');
+
+        this.applyGravity();
+        this.resolveChains();
+    },
+
+    applyGravity() {
+        for (let c = 0; c < this.cols; c++) {
+            let writeRow = this.rows - 1;
+            for (let r = this.rows - 1; r >= 0; r--) {
+                if (this.board[r][c] !== 0) {
+                    const val = this.board[r][c];
+                    this.board[r][c] = 0;
+                    this.board[writeRow][c] = val;
+                    writeRow--;
+                }
+            }
+        }
+    },
+
+    resolveChains() {
+        let chain = 0;
+        let totalAttack = 0;
+        const chainPowers = [0, 4, 12, 24, 40, 64, 96, 128, 160];
+
+        while (true) {
+            const visited = Array.from({ length: this.rows }, () => Array(this.cols).fill(false));
+            const toClear = [];
+            const colorsCleared = new Set();
+
+            for (let r = 0; r < this.rows; r++) {
+                for (let c = 0; c < this.cols; c++) {
+                    const color = this.board[r][c];
+                    if (color >= 1 && color <= 5 && !visited[r][c]) {
+                        const group = [];
+                        const queue = [[r, c]];
+                        visited[r][c] = true;
+                        while (queue.length > 0) {
+                            const [cr, cc] = queue.shift();
+                            group.push([cr, cc]);
+                            [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
+                                const nr = cr + dr, nc = cc + dc;
+                                if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols && !visited[nr][nc] && this.board[nr][nc] === color) {
+                                    visited[nr][nc] = true;
+                                    queue.push([nr, nc]);
+                                }
+                            });
+                        }
+                        if (group.length >= 4) {
+                            colorsCleared.add(color);
+                            group.forEach(pt => toClear.push(pt));
+                        }
+                    }
+                }
+            }
+
+            if (toClear.length === 0) break;
+
+            chain++;
+            playSound('clear', chain);
+            const clearSet = new Set(toClear.map(([r, c]) => `${r},${c}`));
+
+            // 隣接おじゃまぷよも同時消去
+            toClear.forEach(([r, c]) => {
+                const colHex = PUYO_COLORS[this.board[r][c]] || '#fff';
+                spawnParticles('puyo-canvas', c, r, this.cols, this.rows, colHex);
+                [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols && this.board[nr][nc] === 6) {
+                        clearSet.add(`${nr},${nc}`);
+                    }
+                });
+            });
+
+            clearSet.forEach(key => {
+                const [r, c] = key.split(',').map(Number);
+                this.board[r][c] = 0;
+            });
+
+            const basePow = chain < chainPowers.length ? chainPowers[chain] : chainPowers[chainPowers.length - 1] + (chain - 8) * 32;
+            const stepScore = toClear.length * 10 * Math.max(1, basePow);
+            addScore(stepScore);
+            totalAttack += Math.max(1, Math.floor(stepScore / 70));
+
+            this.applyGravity();
+        }
+
+        if (chain > 0) {
+            if (chain >= 4) unlockTrophy('chain_4');
+            if (chain >= 2) triggerBoardShake();
+            showPopup('puyo', `${chain}連鎖!!`);
+
+            // 全消し判定
+            const isEmpty = this.board.every(row => row.every(v => v === 0));
+            if (isEmpty) {
+                this.allClearBonus = true;
+                document.getElementById('puyo-allclear-badge').classList.remove('hidden');
+                showPopup('puyo', '✨全消し!!✨');
+                addScore(2100);
+                unlockTrophy('all_clear');
+                if (isBigBangMode) loadBigBangSeed();
+            } else if (this.allClearBonus) {
+                totalAttack += 30;
+                this.allClearBonus = false;
+                document.getElementById('puyo-allclear-badge').classList.add('hidden');
+            }
+
+            resolvePlayerAttack(totalAttack);
+        } else if (this.pendingGarbage > 0) {
+            // 連鎖しなかったら予告おじゃまが降ってくる（1回最大30個）
+            const dropCount = Math.min(30, this.pendingGarbage);
+            this.pendingGarbage -= dropCount;
+            this.dropGarbagePuyos(dropCount);
+            updateGarbageIcons();
+        }
+
+        if (!isGameOver) this.spawn();
+    },
+
+    dropGarbagePuyos(count) {
+        let rem = count;
+        for (let r = 0; r < this.rows && rem > 0; r++) {
+            const colsOrder = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5);
+            for (const c of colsOrder) {
+                if (rem <= 0) break;
+                if (this.board[r][c] === 0) {
+                    this.board[r][c] = 6;
+                    rem--;
+                }
+            }
+        }
+        this.applyGravity();
+    },
+
+    clearBottomRows(numRows) {
+        for (let i = 0; i < numRows; i++) {
+            this.board.pop();
+            this.board.unshift(Array(this.cols).fill(0));
+        }
+    },
+
+    update(dt) {
+        if (isGameOver || !this.cur) return;
+        const ruleMult = (currentAdventureStage && currentAdventureStage.ruleKey === 'fast_drop') ? 1.8 : 1.0;
+        const interval = Math.max(120, (1100 - settings.dropSpeed * 95) / ruleMult);
+        this.dropTimer += dt;
+        if (this.dropTimer >= interval) {
+            this.dropTimer = 0;
+            if (this.isValid(this.cur.x, this.cur.y + 1, this.cur.rot)) {
+                this.cur.y += 1;
+            } else {
+                this.lockPiece();
+            }
+        }
+    },
+
+    drawNext() {
+        const canvas = document.getElementById('puyo-next');
+        if (!canvas || !this.next1) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        this.drawSinglePuyo(ctx, 11, 28, 7, this.next1.c1);
+        this.drawSinglePuyo(ctx, 11, 12, 7, this.next1.c2);
+        if (this.next2) {
+            this.drawSinglePuyo(ctx, 28, 30, 5.5, this.next2.c1);
+            this.drawSinglePuyo(ctx, 28, 17, 5.5, this.next2.c2);
+        }
+    },
+
+    drawSinglePuyo(ctx, cx, cy, r, colorIdx) {
+        const col = PUYO_COLORS[colorIdx] || '#fff';
+        ctx.save();
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        if (settings.puyoSkin === 'jewel') {
+            ctx.moveTo(cx, cy - r);
+            ctx.lineTo(cx + r, cy);
+            ctx.lineTo(cx, cy + r);
+            ctx.lineTo(cx - r, cy);
+            ctx.closePath();
+        } else {
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        if (settings.puyoSkin === 'gummy') {
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // 目・ハイライト
+        if (colorIdx >= 1 && colorIdx <= 5) {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(cx - r * 0.3, cy - r * 0.15, r * 0.25, 0, Math.PI * 2);
+            ctx.arc(cx + r * 0.3, cy - r * 0.15, r * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(cx - r * 0.28, cy - r * 0.15, r * 0.12, 0, Math.PI * 2);
+            ctx.arc(cx + r * 0.28, cy - r * 0.15, r * 0.12, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    },
+
+    draw() {
+        const canvas = document.getElementById('puyo-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const cw = canvas.width / this.cols;
+        const ch = canvas.height / this.rows;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 練習モードの階段積みガイド
+        if (isPracticeMode) {
+            const guide = [
+                [11,0,1],[10,0,1],[9,0,1],[8,1,1],
+                [11,1,2],[10,1,2],[9,1,2],[8,2,2],
+                [11,2,3],[10,2,3],[9,2,3],[8,3,3]
+            ];
+            ctx.save();
+            ctx.globalAlpha = 0.25;
+            guide.forEach(([r, c, col]) => {
+                if (this.board[r][c] === 0) {
+                    this.drawSinglePuyo(ctx, (c + 0.5) * cw, (r + 0.5) * ch, Math.min(cw, ch) * 0.4, col);
+                }
+            });
+            ctx.restore();
+        }
+
+        // 窒息ライン（3列目上部 ×印）
+        ctx.strokeStyle = 'rgba(248, 113, 113, 0.7)';
+        ctx.lineWidth = 2;
+        const x0 = 2 * cw + cw * 0.25, y0 = ch * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0); ctx.lineTo(x0 + cw * 0.5, y0 + ch * 0.5);
+        ctx.moveTo(x0 + cw * 0.5, y0); ctx.lineTo(x0, y0 + ch * 0.5);
+        ctx.stroke();
+
+        // 盤面ぷよ＋連結描画
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                const val = this.board[r][c];
+                if (val === 0) continue;
+                const cx = (c + 0.5) * cw;
+                const cy = (r + 0.5) * ch;
+                const rad = Math.min(cw, ch) * 0.44;
+
+                // 同色連結ブリッジ
+                if (val >= 1 && val <= 5) {
+                    ctx.fillStyle = PUYO_COLORS[val];
+                    if (c + 1 < this.cols && this.board[r][c + 1] === val) {
+                        ctx.fillRect(cx, cy - rad * 0.55, cw, rad * 1.1);
+                    }
+                    if (r + 1 < this.rows && this.board[r + 1][c] === val) {
+                        ctx.fillRect(cx - rad * 0.55, cy, rad * 1.1, ch);
+                    }
+                }
+                this.drawSinglePuyo(ctx, cx, cy, rad, val);
+            }
+        }
+
+        // ゴースト＆操作中ぷよ
+        if (this.cur) {
+            const sub = this.getSubPos(this.cur.x, this.cur.y, this.cur.rot);
+            const rad = Math.min(cw, ch) * 0.44;
+
+            if (settings.ghost) {
+                let gy = this.cur.y;
+                while (this.isValid(this.cur.x, gy + 1, this.cur.rot)) gy++;
+                const gsub = this.getSubPos(this.cur.x, gy, this.cur.rot);
+                ctx.save();
+                ctx.globalAlpha = 0.28;
+                if (gy >= 0) this.drawSinglePuyo(ctx, (this.cur.x + 0.5) * cw, (gy + 0.5) * ch, rad, this.cur.c1);
+                if (gsub.y >= 0) this.drawSinglePuyo(ctx, (gsub.x + 0.5) * cw, (gsub.y + 0.5) * ch, rad, this.cur.c2);
+                ctx.restore();
+            }
+
+            if (this.cur.y >= 0) this.drawSinglePuyo(ctx, (this.cur.x + 0.5) * cw, (this.cur.y + 0.5) * ch, rad, this.cur.c1);
+            if (sub.y >= 0) this.drawSinglePuyo(ctx, (sub.x + 0.5) * cw, (sub.y + 0.5) * ch, rad, this.cur.c2);
+        }
+
+        updateAndDrawParticles(ctx, 'puyo-canvas');
+    }
+};
+
+// ==========================================
+// 8. テトリスエンジン（7種ミノ・HOLD・Tスピン・B2B）
+// ==========================================
+const TETROMINOS = {
+    I: { color: '#06b6d4', shape: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+    J: { color: '#3b82f6', shape: [[1,0,0],[1,1,1],[0,0,0]] },
+    L: { color: '#f97316', shape: [[0,0,1],[1,1,1],[0,0,0]] },
+    O: { color: '#eab308', shape: [[1,1],[1,1]] },
+    S: { color: '#22c55e', shape: [[0,1,1],[1,1,0],[0,0,0]] },
+    T: { color: '#a855f7', shape: [[0,1,0],[1,1,1],[0,0,0]] },
+    Z: { color: '#ef4444', shape: [[1,1,0],[0,1,1],[0,0,0]] }
+};
+const tetris = {
+    cols: 10,
+    rows: 20,
+    board: [],
+    cur: null,
+    nextType: null,
+    holdType: null,
+    canHold: true,
+    bag: [],
+    dropTimer: 0,
+    pendingGarbage: 0,
+    b2b: false,
+    combo: -1,
+    lastWasRotate: false,
+
+    init(ruleKey = 'normal') {
+        this.board = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+        this.holdType = null;
+        this.canHold = true;
+        this.bag = [];
+        this.pendingGarbage = 0;
+        this.b2b = false;
+        this.combo = -1;
+        this.dropTimer = 0;
+
+        if (ruleKey === 'start_garbage' || ruleKey === 'start_garbage2') {
+            const lines = ruleKey === 'start_garbage2' ? 2 : 1;
+            this.addGarbageLines(lines, false);
+        }
+        this.nextType = this.drawFromBag();
+        this.spawn();
+        this.drawMini('tetris-hold', null);
+    },
+
+    drawFromBag() {
+        if (isFeverActive) return Math.random() < 0.6 ? 'I' : 'T';
+        if (this.bag.length === 0) {
+            this.bag = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'].sort(() => Math.random() - 0.5);
+        }
+        return this.bag.pop();
+    },
+
+    spawn(forcedType = null) {
+        const type = forcedType || this.nextType;
+        if (!forcedType) this.nextType = this.drawFromBag();
+        const proto = TETROMINOS[type];
+        const shape = proto.shape.map(r => [...r]);
+        this.cur = {
+            type,
+            color: proto.color,
+            shape,
+            x: Math.floor((this.cols - shape[0].length) / 2),
+            y: 0
+        };
+        this.canHold = true;
+        this.lastWasRotate = false;
+        this.drawMini('tetris-next', this.nextType);
+
+        if (!this.isValid(this.cur.x, this.cur.y, this.cur.shape)) {
+            if (isPracticeMode || isBigBangMode) {
+                this.board = Array.from({ length: this.rows }, () => Array(this.cols).fill(null));
+                if (isBigBangMode) loadBigBangSeed();
+            } else {
+                triggerGameOver(false);
+            }
+        }
+    },
+
+    hold() {
+        if (!this.cur || !this.canHold || isGameOver) return;
+        if (currentAdventureStage && currentAdventureStage.ruleKey === 'no_hold') {
+            showPopup('tetris', '🚫HOLD封印中!');
+            return;
+        }
+        const prevHold = this.holdType;
+        this.holdType = this.cur.type;
+        this.drawMini('tetris-hold', this.holdType);
+        playSound('rotate');
+        if (prevHold) this.spawn(prevHold);
+        else this.spawn();
+        this.canHold = false;
+    },
+
+    isValid(x, y, shape) {
+        for (let r = 0; r < shape.length; r++) {
+            for (let c = 0; c < shape[r].length; c++) {
+                if (!shape[r][c]) continue;
+                const nx = x + c, ny = y + r;
+                if (nx < 0 || nx >= this.cols || ny >= this.rows) return false;
+                if (ny >= 0 && this.board[ny][nx] !== null) return false;
+            }
+        }
+        return true;
+    },
+
+    move(dx) {
+        if (!this.cur || isGameOver) return;
+        if (this.isValid(this.cur.x + dx, this.cur.y, this.cur.shape)) {
+            this.cur.x += dx;
+            this.lastWasRotate = false;
+            playSound('move');
+        }
+    },
+
+    rotate(dir) {
+        if (!this.cur || isGameOver) return;
+        const N = this.cur.shape.length;
+        const rotated = Array.from({ length: N }, () => Array(N).fill(0));
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                if (dir === 1) rotated[c][N - 1 - r] = this.cur.shape[r][c];
+                else rotated[N - 1 - c][r] = this.cur.shape[r][c];
+            }
+        }
+        const kicks = [[0,0], [-1,0], [1,0], [0,-1], [-2,0], [2,0]];
+        for (const [kx, ky] of kicks) {
+            if (this.isValid(this.cur.x + kx, this.cur.y + ky, rotated)) {
+                this.cur.x += kx;
+                this.cur.y += ky;
+                this.cur.shape = rotated;
+                this.lastWasRotate = true;
+                playSound('rotate');
+                return;
+            }
+        }
+    },
+
+    softDrop() {
+        if (!this.cur || isGameOver) return;
+        if (this.isValid(this.cur.x, this.cur.y + 1, this.cur.shape)) {
+            this.cur.y += 1;
+            this.lastWasRotate = false;
+            addScore(1);
+        } else {
+            this.lockPiece();
+        }
+    },
+
+    hardDrop() {
+        if (!this.cur || isGameOver) return;
+        while (this.isValid(this.cur.x, this.cur.y + 1, this.cur.shape)) {
+            this.cur.y += 1;
+            addScore(2);
+        }
+        this.lockPiece();
+    },
+
+    lockPiece() {
+        if (!this.cur) return;
+        // T-Spin簡易判定
+        let isTSpin = false;
+        if (this.cur.type === 'T' && this.lastWasRotate) {
+            let corners = 0;
+            [[0,0],[2,0],[0,2],[2,2]].forEach(([dc, dr]) => {
+                const cx = this.cur.x + dc, cy = this.cur.y + dr;
+                if (cx < 0 || cx >= this.cols || cy >= this.rows || (cy >= 0 && this.board[cy][cx] !== null)) corners++;
+            });
+            if (corners >= 3) isTSpin = true;
+        }
+
+        for (let r = 0; r < this.cur.shape.length; r++) {
+            for (let c = 0; c < this.cur.shape[r].length; c++) {
+                if (this.cur.shape[r][c]) {
+                    const ny = this.cur.y + r, nx = this.cur.x + c;
+                    if (ny >= 0 && ny < this.rows) this.board[ny][nx] = this.cur.color;
+                }
+            }
+        }
+        playSound('drop');
+
+        // ライン消去チェック
+        let cleared = 0;
+        for (let r = this.rows - 1; r >= 0; r--) {
+            if (this.board[r].every(cell => cell !== null)) {
+                for (let c = 0; c < this.cols; c++) {
+                    spawnParticles('tetris-canvas', c, r, this.cols, this.rows, this.board[r][c]);
+                }
+                this.board.splice(r, 1);
+                this.board.unshift(Array(this.cols).fill(null));
+                cleared++;
+                r++;
+            }
+        }
+
+        if (cleared > 0) {
+            this.combo++;
+            playSound('clear', cleared + (isTSpin ? 2 : 0));
+            let baseAtk = [0, 1, 3, 5, 8][cleared] || 8;
+            if (isTSpin) baseAtk = cleared * 4 + 2;
+
+            const isSpecial = (cleared === 4 || isTSpin);
+            if (isSpecial && this.b2b) {
+                baseAtk = Math.ceil(baseAtk * 1.5);
+                document.getElementById('tetris-b2b-badge').classList.remove('hidden');
+            } else if (!isSpecial) {
+                document.getElementById('tetris-b2b-badge').classList.add('hidden');
+            }
+            this.b2b = isSpecial;
+
+            if (this.combo > 0) baseAtk += Math.floor(this.combo / 2);
+
+            if (isTSpin) showPopup('tetris', `🌀T-SPIN ${cleared}!!`);
+            else if (cleared === 4) {
+                showPopup('tetris', '💎TETRIS!!');
+                unlockTrophy('tetris_clear');
+            } else if (this.combo >= 1) {
+                showPopup('tetris', `${this.combo} REN!`);
+            }
+
+            if (cleared >= 3 || isTSpin) triggerBoardShake();
+            addScore(cleared * 250 * (isTSpin ? 2 : 1));
+            resolvePlayerAttack(baseAtk);
+
+            if (isBigBangMode && this.board.every(row => row.every(v => v === null))) {
+                loadBigBangSeed();
+            }
+        } else {
+            this.combo = -1;
+            if (this.pendingGarbage > 0) {
+                const lines = Math.min(8, Math.max(1, Math.ceil(this.pendingGarbage / 2)));
+                this.pendingGarbage = 0;
+                this.addGarbageLines(lines, lines >= 4);
+                updateGarbageIcons();
+            }
+        }
+
+        if (!isGameOver) this.spawn();
+    },
+
+    addGarbageLines(lines, scatteredHoles) {
+        let holeCol = Math.floor(Math.random() * this.cols);
+        for (let i = 0; i < lines; i++) {
+            if (scatteredHoles) holeCol = Math.floor(Math.random() * this.cols);
+            this.board.shift();
+            const row = Array(this.cols).fill('#64748b');
+            row[holeCol] = null;
+            this.board.push(row);
+        }
+    },
+
+    clearBottomLines(num) {
+        for (let i = 0; i < num; i++) {
+            this.board.pop();
+            this.board.unshift(Array(this.cols).fill(null));
+        }
+    },
+
+    update(dt) {
+        if (isGameOver || !this.cur) return;
+        const ruleMult = (currentAdventureStage && currentAdventureStage.ruleKey === 'fast_drop') ? 1.8 : 1.0;
+        const interval = Math.max(120, (1050 - settings.dropSpeed * 90) / ruleMult);
+        this.dropTimer += dt;
+        if (this.dropTimer >= interval) {
+            this.dropTimer = 0;
+            if (this.isValid(this.cur.x, this.cur.y + 1, this.cur.shape)) {
+                this.cur.y += 1;
+            } else {
+                this.lockPiece();
+            }
+        }
+    },
+
+    drawMini(canvasId, type) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!type) return;
+        const proto = TETROMINOS[type];
+        const size = Math.floor(canvas.width / 4.5);
+        const ox = (canvas.width - proto.shape[0].length * size) / 2;
+        const oy = (canvas.height - proto.shape.length * size) / 2;
+        proto.shape.forEach((row, r) => {
+            row.forEach((val, c) => {
+                if (val) {
+                    ctx.fillStyle = proto.color;
+                    ctx.fillRect(ox + c * size, oy + r * size, size - 1, size - 1);
+                }
+            });
+        });
+    },
+
+    drawBlock(ctx, x, y, w, h, color) {
+        ctx.fillStyle = color;
+        if (settings.minoSkin === 'neon') {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+        } else if (settings.minoSkin === 'retro') {
+            ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.fillRect(x + 2, y + 2, w * 0.35, h * 0.35);
+        } else {
+            ctx.fillRect(x + 0.5, y + 0.5, w - 1, h - 1);
+            ctx.fillStyle = 'rgba(255,255,255,0.25)';
+            ctx.fillRect(x + 1, y + 1, w - 2, 3);
+        }
+    },
+
+    draw() {
+        const canvas = document.getElementById('tetris-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const cw = canvas.width / this.cols;
+        const ch = canvas.height / this.rows;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // グリッド線
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                ctx.strokeRect(c * cw, r * ch, cw, ch);
+                if (this.board[r][c]) {
+                    this.drawBlock(ctx, c * cw, r * ch, cw, ch, this.board[r][c]);
+                }
+            }
+        }
+
+        if (this.cur) {
+            if (settings.ghost) {
+                let gy = this.cur.y;
+                while (this.isValid(this.cur.x, gy + 1, this.cur.shape)) gy++;
+                ctx.save();
+                ctx.globalAlpha = 0.25;
+                this.cur.shape.forEach((row, r) => {
+                    row.forEach((val, c) => {
+                        if (val) this.drawBlock(ctx, (this.cur.x + c) * cw, (gy + r) * ch, cw, ch, this.cur.color);
+                    });
+                });
+                ctx.restore();
+            }
+
+            this.cur.shape.forEach((row, r) => {
+                row.forEach((val, c) => {
+                    if (val) this.drawBlock(ctx, (this.cur.x + c) * cw, (this.cur.y + r) * ch, cw, ch, this.cur.color);
+                });
+            });
+        }
+
+        updateAndDrawParticles(ctx, 'tetris-canvas');
+    }
+};
+
+// ==========================================
+// 9. ビッグバン（連鎖のタネ）生成
+// ==========================================
+function loadBigBangSeed() {
+    if (playerStyle === 'puyo') {
+        puyo.board = Array.from({ length: 12 }, () => Array(6).fill(0));
+        // 4連鎖階段タネ生成
+        const cols = [1, 2, 3, 4];
+        for (let i = 0; i < 4; i++) {
+            const c = cols[i];
+            puyo.board[11][i] = c;
+            puyo.board[10][i] = c;
+            puyo.board[9][i] = c;
+            if (i + 1 < 6) puyo.board[8][i + 1] = c;
+        }
+        puyo.cur.c1 = 1;
+        puyo.cur.c2 = 1;
+    } else {
+        tetris.board = Array.from({ length: 20 }, () => Array(10).fill(null));
+        for (let r = 16; r < 20; r++) {
+            for (let c = 0; c < 9; c++) tetris.board[r][c] = '#06b6d4';
+        }
+        tetris.cur = { type: 'I', color: '#06b6d4', shape: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], x: 6, y: 0 };
+    }
+}
+
+// ==========================================
+// 10. CPU AI エンジン（本格ぷよ＆テトリスAI）
+// ==========================================
+const cpu = {
+    style: 'tetris',
+    interval: 900,
+    tactic: 'rush',
+    timer: 0,
+    score: 0,
+    pendingGarbage: 0,
+    board: [],
+    cur: null,
+
+    init(style, interval, tactic = 'rush') {
+        this.style = style;
+        this.interval = interval;
+        this.tactic = tactic;
+        this.timer = 0;
+        this.score = 0;
+        this.pendingGarbage = 0;
+        document.getElementById('cpu-score-label').textContent = '0';
+
+        if (style === 'puyo') {
+            this.board = Array.from({ length: 12 }, () => Array(6).fill(0));
+        } else {
+            this.board = Array.from({ length: 20 }, () => Array(10).fill(null));
+        }
+        this.spawnNext();
+    },
+
+    spawnNext() {
+        if (this.style === 'puyo') {
+            if (this.board[0][2] !== 0) {
+                handleBattleWin();
+                return;
+            }
+            this.cur = {
+                x: Math.floor(Math.random() * 5),
+                y: 1,
+                c1: 1 + Math.floor(Math.random() * 4),
+                c2: 1 + Math.floor(Math.random() * 4)
+            };
+        } else {
+            const keys = Object.keys(TETROMINOS);
+            const type = keys[Math.floor(Math.random() * keys.length)];
+            const proto = TETROMINOS[type];
+            const shape = proto.shape.map(r => [...r]);
+            // 一番穴が少ない列を探して配置先を決定
+            let bestX = 0, bestScore = -9999;
+            for (let tx = 0; tx <= 10 - shape[0].length; tx++) {
+                let ty = 0;
+                while (this.isValidTet(tx, ty + 1, shape)) ty++;
+                const sc = ty * 10 - Math.abs(tx - 4);
+                if (sc > bestScore) { bestScore = sc; bestX = tx; }
+            }
+            this.cur = { type, color: proto.color, shape, x: bestX, y: 0 };
+            if (!this.isValidTet(this.cur.x, this.cur.y, this.cur.shape)) {
+                handleBattleWin();
+            }
+        }
+    },
+
+    isValidTet(x, y, shape) {
+        for (let r = 0; r < shape.length; r++) {
+            for (let c = 0; c < shape[r].length; c++) {
+                if (!shape[r][c]) continue;
+                const nx = x + c, ny = y + r;
+                if (nx < 0 || nx >= 10 || ny >= 20) return false;
+                if (ny >= 0 && this.board[ny][nx] !== null) return false;
+            }
+        }
+        return true;
+    },
+
+    update(dt) {
+        if (!isBattleMode || isGameOver || !this.cur) return;
+        this.timer += dt;
+        const stepMs = Math.max(140, this.interval / 4);
+        if (this.timer < stepMs) return;
+        this.timer = 0;
+
+        if (this.style === 'puyo') {
+            if (this.cur.y + 1 < 12 && this.board[this.cur.y + 1][this.cur.x] === 0 && this.board[this.cur.y][this.cur.x + 1] === 0) {
+                this.cur.y += 1;
+            } else {
+                // 着地して本物の連鎖判定
+                this.board[this.cur.y][this.cur.x] = this.cur.c1;
+                if (this.cur.x + 1 < 6) this.board[this.cur.y][this.cur.x + 1] = this.cur.c2;
+                this.applyPuyoGravity();
+                this.resolvePuyoChains();
+                this.spawnNext();
+            }
+        } else {
+            if (this.isValidTet(this.cur.x, this.cur.y + 1, this.cur.shape)) {
+                this.cur.y += 1;
+            } else {
+                // テトリミノ固定＆ライン消去
+                for (let r = 0; r < this.cur.shape.length; r++) {
+                    for (let c = 0; c < this.cur.shape[r].length; c++) {
+                        if (this.cur.shape[r][c]) {
+                            const ny = this.cur.y + r, nx = this.cur.x + c;
+                            if (ny >= 0 && ny < 20) this.board[ny][nx] = this.cur.color;
+                        }
+                    }
+                }
+                let cleared = 0;
+                for (let r = 19; r >= 0; r--) {
+                    if (this.board[r].every(cell => cell !== null)) {
+                        this.board.splice(r, 1);
+                        this.board.unshift(Array(10).fill(null));
+                        cleared++;
+                        r++;
+                    }
+                }
+                if (cleared > 0) {
+                    this.score += cleared * 300;
+                    document.getElementById('cpu-score-label').textContent = this.score;
+                    showPopup('cpu', `${cleared} LINE!`);
+                    sendAttackToPlayer(cleared * 2);
+                } else if (this.pendingGarbage > 0) {
+                    const lines = Math.min(6, Math.max(1, Math.ceil(this.pendingGarbage / 2)));
+                    this.pendingGarbage = 0;
+                    const hole = Math.floor(Math.random() * 10);
+                    for (let i = 0; i < lines; i++) {
+                        this.board.shift();
+                        const row = Array(10).fill('#64748b');
+                        row[hole] = null;
+                        this.board.push(row);
+                    }
+                    updateGarbageIcons();
+                }
+                this.spawnNext();
+            }
+        }
+    },
+
+    applyPuyoGravity() {
+        for (let c = 0; c < 6; c++) {
+            let w = 11;
+            for (let r = 11; r >= 0; r--) {
+                if (this.board[r][c] !== 0) {
+                    const v = this.board[r][c];
+                    this.board[r][c] = 0;
+                    this.board[w][c] = v;
+                    w--;
+                }
+            }
+        }
+    },
+
+    resolvePuyoChains() {
+        let chain = 0;
+        while (true) {
+            const vis = Array.from({ length: 12 }, () => Array(6).fill(false));
+            const clear = [];
+            for (let r = 0; r < 12; r++) {
+                for (let c = 0; c < 6; c++) {
+                    const col = this.board[r][c];
+                    if (col >= 1 && col <= 5 && !vis[r][c]) {
+                        const grp = [], q = [[r, c]];
+                        vis[r][c] = true;
+                        while (q.length) {
+                            const [cr, cc] = q.shift();
+                            grp.push([cr, cc]);
+                            [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
+                                const nr = cr + dr, nc = cc + dc;
+                                if (nr >= 0 && nr < 12 && nc >= 0 && nc < 6 && !vis[nr][nc] && this.board[nr][nc] === col) {
+                                    vis[nr][nc] = true;
+                                    q.push([nr, nc]);
+                                }
+                            });
+                        }
+                        if (grp.length >= 4) grp.forEach(p => clear.push(p));
+                    }
+                }
+            }
+            if (!clear.length) break;
+            chain++;
+            clear.forEach(([r, c]) => { this.board[r][c] = 0; });
+            this.applyPuyoGravity();
+        }
+        if (chain > 0) {
+            this.score += chain * 400;
+            document.getElementById('cpu-score-label').textContent = this.score;
+            showPopup('cpu', `${chain}連鎖!`);
+            sendAttackToPlayer(chain * 4);
+        } else if (this.pendingGarbage > 0) {
+            let rem = Math.min(24, this.pendingGarbage);
+            this.pendingGarbage -= rem;
+            for (let r = 0; r < 12 && rem > 0; r++) {
+                for (let c = 0; c < 6 && rem > 0; c++) {
+                    if (this.board[r][c] === 0) { this.board[r][c] = 6; rem--; }
+                }
+            }
+            this.applyPuyoGravity();
+            updateGarbageIcons();
+        }
+    },
+
+    draw() {
+        const canvas = document.getElementById('cpu-canvas');
+        if (!canvas || !isBattleMode) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (this.style === 'puyo') {
+            const cw = canvas.width / 6, ch = canvas.height / 12;
+            const rad = Math.min(cw, ch) * 0.42;
+            for (let r = 0; r < 12; r++) {
+                for (let c = 0; c < 6; c++) {
+                    if (this.board[r][c]) puyo.drawSinglePuyo(ctx, (c + 0.5) * cw, (r + 0.5) * ch, rad, this.board[r][c]);
+                }
+            }
+            if (this.cur) {
+                puyo.drawSinglePuyo(ctx, (this.cur.x + 0.5) * cw, (this.cur.y + 0.5) * ch, rad, this.cur.c1);
+                if (this.cur.x + 1 < 6) puyo.drawSinglePuyo(ctx, (this.cur.x + 1.5) * cw, (this.cur.y + 0.5) * ch, rad, this.cur.c2);
+            }
+        } else {
+            const cw = canvas.width / 10, ch = canvas.height / 20;
+            for (let r = 0; r < 20; r++) {
+                for (let c = 0; c < 10; c++) {
+                    if (this.board[r][c]) tetris.drawBlock(ctx, c * cw, r * ch, cw, ch, this.board[r][c]);
+                }
+            }
+            if (this.cur) {
+                this.cur.shape.forEach((row, r) => {
+                    row.forEach((val, c) => {
+                        if (val) tetris.drawBlock(ctx, (this.cur.x + c) * cw, (this.cur.y + r) * ch, cw, ch, this.cur.color);
+                    });
+                });
+            }
+        }
+    }
+};
+
+// ==========================================
+// 11. メインループ＆描画＆リサイズ
+// ==========================================
+function drawAll() {
+    puyo.draw();
+    tetris.draw();
+    cpu.draw();
+}
+
+function resizeCanvases() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const isMobile = vw < 640;
+
+    const headerEl = document.getElementById('app-header');
+    const footerEl = document.getElementById('app-footer');
+    const hudEl = document.getElementById('player-hud');
+
+    const headerH = headerEl ? headerEl.offsetHeight : 52;
+    const footerH = footerEl ? footerEl.offsetHeight : 84;
+    const hudH = (hudEl && hudEl.offsetHeight > 0) ? hudEl.offsetHeight : 78;
+
+    const availH = Math.max(180, vh - headerH - footerH - hudH - 58);
+    const maxWBasedH = isBattleMode
+        ? Math.floor((vw - (isMobile ? 36 : 90)) * 0.54 * 2)
+        : Math.floor((vw - (isMobile ? 28 : 80)) * 2);
+
+    const baseH = Math.min(isMobile ? 340 : 440, availH, maxWBasedH);
+
+    const pCanvas = document.getElementById('puyo-canvas');
+    if (pCanvas) {
+        pCanvas.height = baseH;
+        pCanvas.width = Math.round(baseH / 2);
+    }
+
+    const tCanvas = document.getElementById('tetris-canvas');
+    if (tCanvas) {
+        tCanvas.height = baseH;
+        tCanvas.width = Math.round(baseH / 2);
+    }
+
+    const cCanvas = document.getElementById('cpu-canvas');
+    if (cCanvas) {
+        const cpuH = Math.round(baseH * (isMobile ? 0.78 : 0.86));
+        cCanvas.height = cpuH;
+        cCanvas.width = Math.round(cpuH / 2);
+    }
+
+    drawAll();
+}
+
+let lastFrameTime = 0;
+function gameLoop(timestamp) {
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const dt = timestamp - lastFrameTime;
+    lastFrameTime = timestamp;
+
+    if (!isGameOver) {
+        if (isFeverActive) {
+            feverTimer -= dt;
+            if (feverTimer <= 0) {
+                isFeverActive = false;
+                feverGauge = 0;
+            }
+            updateFeverUI();
+        }
+        if (isBigBangMode) {
+            bigBangTimeLeft -= dt / 1000;
+            const bbBadge = document.getElementById('bigbang-timer-badge');
+            if (bbBadge) bbBadge.textContent = `⏳${Math.max(0, Math.ceil(bigBangTimeLeft))}s`;
+            if (bigBangTimeLeft <= 0) {
+                triggerGameOver(false);
+            }
+        }
+
+        if (playerStyle === 'puyo') puyo.update(dt);
+        else tetris.update(dt);
+
+        if (isBattleMode) cpu.update(dt);
+    }
+
+    drawAll();
+    requestAnimationFrame(gameLoop);
+}
+
+// ==========================================
+// 12. キーボード＆タッチ操作（DAS/ARR長押し対応）
+// ==========================================
+function activeEngine() {
+    return playerStyle === 'puyo' ? puyo : tetris;
+}
+
+const holdTimers = {};
+function startRepeatAction(key, actionFn, delayMs, repeatMs) {
+    stopRepeatAction(key);
+    actionFn();
+    holdTimers[key] = setTimeout(() => {
+        if (repeatMs === 0) {
+            for (let i = 0; i < 12; i++) actionFn();
+        } else {
+            holdTimers[key] = setInterval(actionFn, Math.max(16, repeatMs));
+        }
+    }, delayMs);
+}
+function stopRepeatAction(key) {
+    if (holdTimers[key]) {
+        clearTimeout(holdTimers[key]);
+        clearInterval(holdTimers[key]);
+        delete holdTimers[key];
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (isGameOver) return;
+    if (e.repeat) return;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault();
+
+    if (e.code === 'ArrowLeft') startRepeatAction('left', () => activeEngine().move(-1), settings.das, settings.arr);
+    else if (e.code === 'ArrowRight') startRepeatAction('right', () => activeEngine().move(1), settings.das, settings.arr);
+    else if (e.code === 'ArrowDown') startRepeatAction('down', () => activeEngine().softDrop(), 40, settings.sdf);
+    else if (e.code === 'ArrowUp' || e.code === 'KeyX') activeEngine().rotate(1);
+    else if (e.code === 'KeyZ') activeEngine().rotate(-1);
+    else if (e.code === 'Space') activeEngine().hardDrop();
+    else if (e.code === 'KeyC' && playerStyle === 'tetris') tetris.hold();
+    else if (e.code === 'KeyV') activatePlayerSkill();
+});
+
+document.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowLeft') stopRepeatAction('left');
+    else if (e.code === 'ArrowRight') stopRepeatAction('right');
+    else if (e.code === 'ArrowDown') stopRepeatAction('down');
+});
+
+function bindTouchBtn(id, key, onPress, isRepeat = false) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const down = (e) => {
+        e.preventDefault();
+        if (isRepeat) {
+            const d = key === 'down' ? 40 : settings.das;
+            const r = key === 'down' ? settings.sdf : settings.arr;
+            startRepeatAction(key, onPress, d, r);
+        } else {
+            onPress();
+        }
+    };
+    const up = (e) => {
+        e.preventDefault();
+        if (isRepeat) stopRepeatAction(key);
+    };
+    el.addEventListener('mousedown', down);
+    el.addEventListener('touchstart', down, { passive: false });
+    el.addEventListener('mouseup', up);
+    el.addEventListener('mouseleave', up);
+    el.addEventListener('touchend', up);
+}
+
+window.addEventListener('resize', resizeCanvases);
+window.onload = function () {
+    loadSaveData();
+    initCharacterUI();
+    updateSettingsUI();
+    puyo.init('normal');
+    tetris.init('normal');
+    setPlayerStyle('puyo');
+
+    bindTouchBtn('ctrl-left', 'left', () => activeEngine().move(-1), true);
+    bindTouchBtn('ctrl-right', 'right', () => activeEngine().move(1), true);
+    bindTouchBtn('ctrl-down', 'down', () => activeEngine().softDrop(), true);
+    bindTouchBtn('ctrl-rot-l', 'rotl', () => activeEngine().rotate(-1), false);
+    bindTouchBtn('ctrl-rot-r', 'rotr', () => activeEngine().rotate(1), false);
+    bindTouchBtn('ctrl-hold', 'hold', () => { if (playerStyle === 'tetris') tetris.hold(); }, false);
+    bindTouchBtn('ctrl-drop', 'drop', () => activeEngine().hardDrop(), false);
+
+    resizeCanvases();
+    requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
