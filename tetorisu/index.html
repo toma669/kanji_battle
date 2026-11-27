@@ -1734,8 +1734,9 @@ const puyo = {
                         const group = [];
                         const queue = [[r, c]];
                         visited[r][c] = true;
-                        while (queue.length > 0) {
-                            const [cr, cc] = queue.shift();
+                        let queueIndex = 0;
+                        while (queueIndex < queue.length) {
+                            const [cr, cc] = queue[queueIndex++];
                             group.push([cr, cc]);
                             [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
                                 const nr = cr + dr, nc = cc + dc;
@@ -1841,13 +1842,15 @@ const puyo = {
     update(dt) {
         if (isGameOver || !this.cur) return;
         const ruleMult = (currentAdventureStage && currentAdventureStage.ruleKey === 'fast_drop') ? 1.8 : 1.0;
-        const interval = Math.max(120, (1100 - settings.dropSpeed * 95) / ruleMult);
-        this.dropTimer += dt;
+        const speed = Number.isFinite(settings.dropSpeed) ? settings.dropSpeed : 3;
+        const interval = Math.max(120, (1100 - speed * 95) / ruleMult);
+        this.dropTimer += Math.max(0, Math.min(dt, 100));
         if (this.dropTimer >= interval) {
-            this.dropTimer = 0;
+            this.dropTimer -= interval;
             if (this.isValid(this.cur.x, this.cur.y + 1, this.cur.rot)) {
                 this.cur.y += 1;
             } else {
+                this.dropTimer = 0;
                 this.lockPiece();
             }
         }
@@ -2451,7 +2454,7 @@ const cpu = {
         this.timer = 0;
 
         if (this.style === 'puyo') {
-            if (this.cur.y + 1 < 12 && this.board[this.cur.y + 1][this.cur.x] === 0 && this.board[this.cur.y][this.cur.x + 1] === 0) {
+            if (this.cur.y + 1 < 12 && this.cur.x >= 0 && this.cur.x + 1 < 6 && this.board[this.cur.y + 1][this.cur.x] === 0 && this.board[this.cur.y + 1][this.cur.x + 1] === 0) {
                 this.cur.y += 1;
             } else {
                 // 着地して本物の連鎖判定
@@ -2530,8 +2533,9 @@ const cpu = {
                     if (col >= 1 && col <= 5 && !vis[r][c]) {
                         const grp = [], q = [[r, c]];
                         vis[r][c] = true;
-                        while (q.length) {
-                            const [cr, cc] = q.shift();
+                        let queueIndex = 0;
+                        while (queueIndex < q.length) {
+                            const [cr, cc] = q[queueIndex++];
                             grp.push([cr, cc]);
                             [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
                                 const nr = cr + dr, nc = cc + dc;
@@ -2608,9 +2612,10 @@ const cpu = {
 // 11. メインループ＆描画＆リサイズ
 // ==========================================
 function drawAll() {
-    puyo.draw();
-    tetris.draw();
-    cpu.draw();
+    // 表示中の盤面だけを描画し、隠れている盤面の無駄な再描画を防ぐ
+    if (playerStyle === 'puyo') puyo.draw();
+    else tetris.draw();
+    if (isBattleMode) cpu.draw();
 }
 
 function resizeCanvases() {
@@ -2656,10 +2661,19 @@ function resizeCanvases() {
 }
 
 let lastFrameTime = 0;
+let lastRenderTime = 0;
+let lastUiUpdateTime = 0;
+let lastBigBangSecond = -1;
 function gameLoop(timestamp) {
     if (!lastFrameTime) lastFrameTime = timestamp;
-    const dt = timestamp - lastFrameTime;
+    // 描画を最大30FPSに制限。入力・落下処理の時間差はまとめて反映する
+    if (timestamp - lastRenderTime < 1000 / 30) {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+    const dt = Math.max(0, Math.min(100, timestamp - lastFrameTime));
     lastFrameTime = timestamp;
+    lastRenderTime = timestamp;
 
     if (!isGameOver) {
         if (isFeverActive) {
@@ -2668,21 +2682,28 @@ function gameLoop(timestamp) {
                 isFeverActive = false;
                 feverGauge = 0;
             }
-            updateFeverUI();
         }
         if (isBigBangMode) {
             bigBangTimeLeft -= dt / 1000;
-            const bbBadge = document.getElementById('bigbang-timer-badge');
-            if (bbBadge) bbBadge.textContent = `⏳${Math.max(0, Math.ceil(bigBangTimeLeft))}s`;
-            if (bigBangTimeLeft <= 0) {
-                triggerGameOver(false);
+            const remainingSecond = Math.max(0, Math.ceil(bigBangTimeLeft));
+            if (remainingSecond !== lastBigBangSecond) {
+                lastBigBangSecond = remainingSecond;
+                const bbBadge = document.getElementById('bigbang-timer-badge');
+                if (bbBadge) bbBadge.textContent = `⏳${remainingSecond}s`;
             }
+            if (bigBangTimeLeft <= 0) triggerGameOver(false);
         }
 
         if (playerStyle === 'puyo') puyo.update(dt);
         else tetris.update(dt);
 
         if (isBattleMode) cpu.update(dt);
+
+        // 毎フレームDOMを書き換えず、UI更新は約5回/秒に抑える
+        if (timestamp - lastUiUpdateTime >= 200) {
+            lastUiUpdateTime = timestamp;
+            if (isFeverActive || feverGauge > 0) updateFeverUI();
+        }
     }
 
     drawAll();
